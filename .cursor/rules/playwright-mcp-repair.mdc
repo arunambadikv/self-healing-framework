@@ -1,56 +1,27 @@
 ---
-description: Use Playwright MCP to repair locator_registry.yaml from healing reports and MCP repair bundles. Apply when fixing selectors, missing semantic keys, or promoting healed fallbacks.
+description: Use Playwright MCP to repair Page Object locators in pages/*.py from failure reports and healing-queue patches.
 globs:
-  - locator_registry.yaml
-  - artifacts/healing-reports/**
-  - artifacts/mcp-repair-bundles/**
-  - healing/**
-  - tests/**
+  - pages/**
+  - artifacts/failures/**
+  - artifacts/healing-queue/**
+  - artifacts/architecture/**
 alwaysApply: false
 ---
 
-# Playwright MCP Locator Repair
+# Playwright MCP Locator Repair (POM)
 
-When repairing locators in this project:
+1. Use the connected **Playwright MCP** server.
+2. Read failure: `artifacts/failures/F-<id>.md`
+3. Follow **`.cursor/skills/playwright-locator-repair/SKILL.md`** for diagnosis and proposal JSON.
+4. Human apply: **`.cursor/skills/healing-review/SKILL.md`** + `python -m healing.healing_review --patch P-<id> --decision heal`
 
-1. Use the connected **Playwright MCP** server (`user-playwright` / `playwright`).
-2. Read the repair prompt: `artifacts/mcp-repair-bundles/prompts/<key>__<trigger>.md`
-3. Read MCP tool plan: `artifacts/mcp-repair-bundles/mcp-plans/<key>__<trigger>.json`
+## MCP sequence
 
-## Required MCP sequence
-
-1. `browser_navigate` — open `base_url` from the bundle (default demo: https://seleniumbase.io/demo_page)
-2. `browser_snapshot` — accessibility tree; find element matching semantic intent
-3. Optionally `browser_evaluate` — verify CSS candidate count/visibility
-
-## Locator priority
-
-`test_id → role → label → placeholder → text → css`
-
-## Skills
-
-- `skills/playwright-locator-repair/SKILL.md`
-- `skills/playwright-registry-update/SKILL.md`
-- `skills/playwright-locator-patching/SKILL.md`
+1. `browser_navigate` — `base_url` from failure JSON
+2. `browser_snapshot` — find element for architecture ref
 
 ## Rules
 
-- Update `locator_registry.yaml` only unless instructed otherwise.
-- Do not weaken assertions or rewrite tests to force pass.
-- Do not add arbitrary sleeps.
-
-## Output
-
-Write resolved repair JSON to:
-
-`artifacts/mcp-repair-bundles/resolved/<semantic_key_with_underscores>.json`
-
-Include `LocatorPatchResult` with `patch` as YAML for the registry entry.
-
-## Apply after review
-
-```bash
-python -m healing.mcp_apply --key <semantic_key> --apply
-pytest <affected_test> -q
-python -m healing.ci_gates
-```
+- Update **`pages/*.py`** only when proposing or applying.
+- Write `artifacts/healing-queue/patches/P-<id>.json` with `architecture_updates[]`.
+- Do not weaken assertions or skip tests.

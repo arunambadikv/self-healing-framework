@@ -1,9 +1,7 @@
-def test_text_inputs(page, smart, base_url):
-    page.goto(base_url)
-    
-    smart.fill("demo.text_input", "Hello Text")
-    smart.fill("demo.textarea", "Hello Textarea")
-    smart.fill("demo.prefilled_text", "Updated Text")
-    smart.fill("demo.placeholder_input", "Custom Placeholder Text")
-    
-    smart.expect_visible("demo.readonly_input")
+def test_text_inputs(demo):
+    demo.goto()
+    demo.fill_text_input("Hello Text")
+    demo.fill_textarea("Hello Textarea")
+    demo.fill_prefilled_text("Updated Text")
+    demo.fill_placeholder_input("Custom Placeholder Text")
+    demo.expect_readonly_input_visible()

@@ -1,9 +1,10 @@
-"""Team demo: pure Playwright (no `smart` fixture) — triggers raw learning on teardown."""
-
-from playwright.sync_api import expect
+"""Legacy-style test using page fixture only — still uses DemoPage (no inline selectors)."""
 
 
 def test_raw_green_button_and_text(page, base_url):
-    page.goto(base_url)
-    page.get_by_role("button", name="Click Me (Green)", exact=True).click()
-    expect(page.locator("#pText")).to_be_visible()
+    from pages.demo_page import DemoPage
+
+    demo = DemoPage(page, base_url)
+    demo.goto()
+    demo.click_green_button()
+    demo.expect_green_text_visible()

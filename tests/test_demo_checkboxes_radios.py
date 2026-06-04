@@ -1,12 +1,9 @@
-def test_checkboxes_radios(page, smart, base_url):
-    page.goto(base_url)
-    
-    smart.check("demo.radio_1")
-    smart.check("demo.radio_2")
-    
-    smart.check("demo.checkbox")
-    smart.uncheck("demo.precheck_box")
-    
-    smart.check("demo.checkbox_1")
-    smart.check("demo.checkbox_2")
-    smart.check("demo.checkbox_3")
+def test_checkboxes_radios(demo):
+    demo.goto()
+    demo.check_radio_1()
+    demo.check_radio_2()
+    demo.check_main_checkbox()
+    demo.uncheck_precheck_box()
+    demo.check_checkbox_1()
+    demo.check_checkbox_2()
+    demo.check_checkbox_3()

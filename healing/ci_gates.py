@@ -9,7 +9,6 @@ from typing import Any
 
 import yaml
 
-from healing.registry import lint_registry, validate_registry
 from healing.test_policy import check_test_policy
 
 
@@ -26,8 +25,11 @@ class GateConfig:
     test_policy_enabled: bool = True
     test_policy_allowlist: list[str] = field(default_factory=list)
     test_policy_forbidden_patterns: list[str] = field(default_factory=list)
-    require_smart_fixture: bool = True
-    test_policy_raw_mode: str = "allow"
+    require_pom_usage: bool = True
+    test_policy_raw_mode: str = "error"
+    require_architecture_manifest: bool = True
+    max_unprocessed_failures: int = 0
+    max_patch_ready_without_review: int = 10
 
 
 @dataclass
@@ -57,8 +59,15 @@ def load_gate_config(path: Path) -> GateConfig:
         test_policy_enabled=bool(policy.get("enabled", True)),
         test_policy_allowlist=list(policy.get("allowlist", [])),
         test_policy_forbidden_patterns=list(policy.get("forbidden_patterns", [])),
-        require_smart_fixture=bool(policy.get("require_smart_fixture", True)),
-        test_policy_raw_mode=str(policy.get("raw_mode", "allow")),
+        require_pom_usage=bool(policy.get("require_pom_usage", True)),
+        test_policy_raw_mode=str(policy.get("raw_mode", "error")),
+        require_architecture_manifest=bool(
+            raw.get("architecture", {}).get("require_manifest", True)
+        ),
+        max_unprocessed_failures=int(thresholds.get("max_unprocessed_failures", 0)),
+        max_patch_ready_without_review=int(
+            thresholds.get("max_patch_ready_without_review", 10)
+        ),
     )
 
 
@@ -133,20 +142,38 @@ def run_ci_gates(
     errors: list[str] = []
     warnings: list[str] = []
 
-    if config.registry_lint_enabled:
-        if not registry_path.exists():
-            errors.append(f"Registry not found: {registry_path}")
-        else:
-            import yaml as yaml_lib
+    if config.require_architecture_manifest:
+        from healing.paths import MANIFEST_JSON
+        from healing.architecture_scan import build_manifest
 
-            registry = yaml_lib.safe_load(registry_path.read_text(encoding="utf-8"))
-            validation_errors = validate_registry(registry)
-            lint_warnings = lint_registry(registry) if isinstance(registry, dict) else []
-            errors.extend(validation_errors)
-            if config.registry_fail_on_warnings:
-                errors.extend(lint_warnings)
-            else:
-                warnings.extend(lint_warnings)
+        if not MANIFEST_JSON.exists():
+            errors.append(
+                f"Architecture manifest missing: {MANIFEST_JSON}. "
+                "Run: python -m healing.architecture_scan"
+            )
+        else:
+            current = build_manifest(workspace)
+            old = json.loads(MANIFEST_JSON.read_text(encoding="utf-8"))
+            if old.get("content_hash") != current.get("content_hash"):
+                warnings.append(
+                    "Architecture manifest is stale. Run: python -m healing.architecture_scan"
+                )
+
+    from healing.healing_queue import get_index_summary, list_unprocessed_failures, list_patch_ready
+
+    summary = get_index_summary()
+    unprocessed = len(list_unprocessed_failures())
+    if unprocessed > config.max_unprocessed_failures:
+        errors.append(
+            f"Unprocessed failures ({unprocessed}) exceed max_unprocessed_failures "
+            f"({config.max_unprocessed_failures}). Run healing-propose or review."
+        )
+    patch_ready = len(list_patch_ready())
+    if patch_ready > config.max_patch_ready_without_review:
+        warnings.append(
+            f"Patches awaiting review ({patch_ready}) exceed soft limit "
+            f"({config.max_patch_ready_without_review}). Run /healing-review."
+        )
 
     if config.test_policy_enabled:
         policy_errors, policy_warnings = check_test_policy(
@@ -154,7 +181,7 @@ def run_ci_gates(
             workspace=workspace,
             allowlist=[workspace / p for p in config.test_policy_allowlist],
             forbidden_patterns=config.test_policy_forbidden_patterns or None,
-            require_smart_fixture=config.require_smart_fixture,
+            require_pom_usage=config.require_pom_usage,
         )
         if config.test_policy_raw_mode == "allow":
             warnings.extend(policy_errors)
@@ -162,7 +189,7 @@ def run_ci_gates(
         elif config.test_policy_raw_mode == "warn":
             warnings.extend(policy_errors)
             warnings.extend(policy_warnings)
-            errors.extend([e for e in policy_errors if "missing `smart` fixture" in e])
+            errors.extend(policy_errors)
         else:
             errors.extend(policy_errors)
             warnings.extend(policy_warnings)

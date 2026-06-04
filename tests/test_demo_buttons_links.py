@@ -1,12 +1,8 @@
-def test_buttons_links(page, smart, base_url):
-    page.goto(base_url)
-    
-    # This intentionally tests healing framework. 
-    # Primary selector in registry is broken, so it will heal.
-    smart.click("demo.green_button")
-    
-    smart.expect_visible("demo.paragraph_text")
-    smart.expect_visible("demo.green_text")
-    smart.expect_visible("demo.seleniumbase_link")
-    smart.expect_visible("demo.github_link")
-    smart.expect_visible("demo.docs_link")
+def test_buttons_links(demo):
+    demo.goto()
+    demo.click_green_button()
+    demo.expect_paragraph_text_visible()
+    demo.expect_green_text_visible()
+    demo.expect_seleniumbase_link_visible()
+    demo.expect_github_link_visible()
+    demo.expect_docs_link_visible()

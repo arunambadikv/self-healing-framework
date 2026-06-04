@@ -25,15 +25,11 @@ jobs:
       - name: Run pytest
         run: pytest tests/ -q
 
-      - name: Phase A — registry lint
-        run: python -m healing.registry_lint
+      - name: Architecture manifest
+        run: python -m healing.architecture_scan
 
-      - name: Phase A — CI gates (healing thresholds + smart test policy)
+      - name: CI gates (POM policy + healing queue)
         run: python -m healing.ci_gates
-
-      - name: Phase B — MCP repair bundles (prompts only)
-        run: python -m healing.mcp_repair_pipeline
-        continue-on-error: true
 
       - name: Upload healing artifacts
         if: always()
@@ -41,7 +37,7 @@ jobs:
         with:
           name: healing-artifacts
           path: |
-            artifacts/healing-reports/
-            artifacts/patch-suggestions/
-            artifacts/mcp-repair-bundles/
+            artifacts/failures/
+            artifacts/healing-queue/
+            artifacts/architecture/
           if-no-files-found: ignore
