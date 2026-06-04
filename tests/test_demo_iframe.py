@@ -1,5 +1,4 @@
-def test_iframe(page, smart, base_url):
-    page.goto(base_url)
-    
-    smart.expect_visible("demo.iframe_image")
-    smart.check("demo.iframe_checkbox")
+def test_iframe(demo):
+    demo.goto()
+    demo.expect_iframe_image_visible()
+    demo.check_iframe_checkbox()

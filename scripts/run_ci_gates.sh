@@ -8,9 +8,9 @@ if [[ ! -x "$PYTHON" ]]; then
   PYTHON=python3
 fi
 
-echo "== Registry lint =="
-"$PYTHON" -m healing.registry_lint
+echo "== Architecture manifest =="
+"$PYTHON" -m healing.architecture_scan
 
 echo ""
-echo "== CI gates (policy + healing reports) =="
+echo "== CI gates (POM policy + healing queue) =="
 "$PYTHON" -m healing.ci_gates "$@"

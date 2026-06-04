@@ -10,8 +10,9 @@ DEFAULT_FORBIDDEN = [
     r"expect\(page\.",
 ]
 
-DEFAULT_REQUIRE_SMART = [
-    r"smart\.(click|fill|check|uncheck|select_option|expect_visible|expect_text|drag_to)\(",
+DEFAULT_REQUIRE_POM = [
+    r"\bdemo\.\w+\(",
+    r"DemoPage\s*\(",
 ]
 
 
@@ -30,7 +31,7 @@ def check_test_policy(
     tests_dir: Path,
     allowlist: list[Path],
     forbidden_patterns: list[str] | None = None,
-    require_smart_fixture: bool = True,
+    require_pom_usage: bool = True,
     workspace: Path | None = None,
 ) -> tuple[list[str], list[str]]:
     errors: list[str] = []
@@ -41,7 +42,8 @@ def check_test_policy(
 
     patterns = forbidden_patterns or DEFAULT_FORBIDDEN
     compiled = [re.compile(p) for p in patterns]
-    smart_action = re.compile(DEFAULT_REQUIRE_SMART[0])
+    pom_usage = re.compile(DEFAULT_REQUIRE_POM[0])
+    demo_page_ctor = re.compile(r"DemoPage\s*\(")
 
     allowed_files = _normalize_allowlist(allowlist, workspace)
 
@@ -59,44 +61,16 @@ def check_test_policy(
         for pattern in compiled:
             if pattern.search(content):
                 errors.append(
-                    f"{rel}: raw Playwright selector detected ({pattern.pattern}). "
-                    "Use smart.* semantic keys or add file to test_policy.allowlist."
+                    f"{rel}: inline Playwright selector in test file ({pattern.pattern}). "
+                    "Use DemoPage methods or add file to test_policy.allowlist."
                 )
                 break
 
-        if require_smart_fixture and smart_action.search(content):
-            if "def test_" in content and "smart" not in content:
-                errors.append(
-                    f"{rel}: uses smart.* but test signature missing `smart` fixture."
-                )
+        if require_pom_usage and "def test_" in content:
+            if not pom_usage.search(content) and not demo_page_ctor.search(content):
+                    if "test_pom_healing" not in test_file.name:
+                        warnings.append(
+                            f"{rel}: no DemoPage/demo.* usage detected — ensure POM pattern."
+                        )
 
     return errors, warnings
-
-
-def list_raw_test_files(
-    *,
-    tests_dir: Path,
-    allowlist: list[Path],
-    forbidden_patterns: list[str] | None = None,
-    workspace: Path | None = None,
-) -> list[Path]:
-    """Return test files that contain forbidden raw Playwright selector patterns."""
-    if workspace is None:
-        workspace = tests_dir.parent
-
-    patterns = forbidden_patterns or DEFAULT_FORBIDDEN
-    compiled = [re.compile(p) for p in patterns]
-    allowed_files = _normalize_allowlist(allowlist, workspace)
-    raw_files: list[Path] = []
-
-    if not tests_dir.exists():
-        return raw_files
-
-    for test_file in sorted(tests_dir.glob("test_*.py")):
-        if test_file.resolve() in allowed_files:
-            continue
-        content = test_file.read_text(encoding="utf-8")
-        if any(pattern.search(content) for pattern in compiled):
-            raw_files.append(test_file)
-
-    return raw_files

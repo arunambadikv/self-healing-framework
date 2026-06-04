@@ -1,0 +1,209 @@
+"""Human-in-the-loop review and apply/skip for healing-queue patches."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from healing.healing_queue import (
+    get_index_summary,
+    list_patch_ready,
+    load_failure_payload,
+    move_patch_file,
+    update_patch_status,
+)
+from healing.paths import QUEUE_APPLIED, QUEUE_PATCHES, QUEUE_SKIPPED, QUEUE_SUMMARIES, ensure_queue_dirs
+from healing.pom_apply import apply_patch_payload, load_patch
+
+
+def format_patch_for_human(patch_id: str, payload: dict[str, Any], workspace: Path) -> str:
+    proposal = payload.get("proposal") or payload
+    failure_id = proposal.get("failure_id", "")
+    lines = [
+        f"## Patch {patch_id}",
+        "",
+        f"**Failure ID:** {failure_id}",
+        f"**Risk:** {proposal.get('risk_level', 'unknown')} — {proposal.get('risk_reason', '')}",
+        f"**Classification:** {proposal.get('classification', '')}",
+        "",
+    ]
+    if failure_id:
+        try:
+            failure = load_failure_payload(failure_id)
+            lines.extend(
+                [
+                    "### Failure context",
+                    "",
+                    f"- Test: `{failure['test']['nodeid']}`",
+                    f"- Error: {failure['error']['type']}: {failure['error']['message'][:300]}",
+                    f"- Ref: `{failure.get('architecture_ref')}`",
+                    "",
+                ]
+            )
+            failing = failure.get("failing_step")
+            if failing:
+                lines.append(
+                    f"- Last step: `{failing.get('page_class')}.{failing.get('method')}` "
+                    f"({failing.get('action')})"
+                )
+                lines.append("")
+        except FileNotFoundError:
+            pass
+
+    lines.append("### Proposed locator changes")
+    lines.append("")
+    for upd in proposal.get("architecture_updates") or []:
+        lines.extend(
+            [
+                f"- **{upd.get('file')}** → `{upd.get('symbol')}` (line {upd.get('line')})",
+                f"  - Before: `{upd.get('before', '')[:120]}`",
+                f"  - After: `{upd.get('after', '')[:120]}`",
+                "",
+            ]
+        )
+    lines.append(f"**Validation:** `{proposal.get('validation_command', '')}`")
+    return "\n".join(lines)
+
+
+def write_skip_rca(patch_id: str, payload: dict[str, Any], reason: str) -> Path:
+    proposal = payload.get("proposal") or payload
+    failure_id = proposal.get("failure_id", "")
+    lines = [
+        f"# Skipped patch {patch_id}",
+        "",
+        f"**Reason:** {reason}",
+        f"**Failure:** {failure_id}",
+        "",
+        "## Suggested RCA / bug report",
+        "",
+        "- Verify whether the application UI changed vs test expectation.",
+        "- Check environment URL and test data.",
+        "- If locator is correct, file a product bug with failure artifact:",
+        f"  - `artifacts/failures/{failure_id}.md`",
+        "",
+        "## Classification hints",
+        "",
+        "- **selector_break** — update page object after product change",
+        "- **app_regression** — product defect; do not heal test",
+        "- **test_data** — fix data/fixtures",
+        "- **flake** — stabilize wait or retry policy (do not weaken assertions)",
+    ]
+    if failure_id:
+        try:
+            failure = load_failure_payload(failure_id)
+            lines.extend(["", "## Error excerpt", "", f"```\n{failure['error']['message'][:800]}\n```"])
+        except FileNotFoundError:
+            pass
+    path = QUEUE_SKIPPED / f"{patch_id}-rca.md"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+def decision_heal(patch_id: str, *, workspace: Path, dry_run: bool = False) -> int:
+    payload = load_patch(patch_id, QUEUE_PATCHES)
+    proposal = payload.get("proposal") or payload
+    updates = proposal.get("architecture_updates") or []
+    if proposal.get("proposal_status") == "awaiting_agent" or any(
+        "TODO" in str(u.get("after", "")) for u in updates
+    ):
+        print(
+            "[error] Patch still has TODO placeholders. Complete via MCP + /healing-propose first."
+        )
+        return 1
+    apply_patch_payload(payload, workspace=workspace, dry_run=dry_run)
+    if not dry_run:
+        update_patch_status(patch_id, "applied")
+        move_patch_file(patch_id, QUEUE_APPLIED)
+    print(f"[ok] Applied patch {patch_id}")
+    return 0
+
+
+def decision_skip(patch_id: str, reason: str) -> int:
+    payload = load_patch(patch_id, QUEUE_PATCHES)
+    write_skip_rca(patch_id, payload, reason)
+    update_patch_status(patch_id, "skipped", notes=reason)
+    move_patch_file(patch_id, QUEUE_SKIPPED)
+    print(f"[ok] Skipped patch {patch_id}; RCA written")
+    return 0
+
+
+def decision_defer(patch_id: str) -> int:
+    update_patch_status(patch_id, "deferred")
+    print(f"[ok] Deferred patch {patch_id}")
+    return 0
+
+
+def write_summary(workspace: Path) -> Path:
+    ensure_queue_dirs()
+    counts = get_index_summary()
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    path = QUEUE_SUMMARIES / f"summary-{ts}.md"
+    ready = list_patch_ready()
+    lines = [
+        "# Healing session summary",
+        "",
+        f"**Generated:** {datetime.now(timezone.utc).isoformat()}",
+        "",
+        "## Counts",
+        "",
+    ]
+    for status, count in sorted(counts.items()):
+        lines.append(f"- **{status}:** {count}")
+    lines.append("")
+    if ready:
+        lines.extend(["## Still awaiting review", ""] + [f"- {e.get('patch_id')}" for e in ready])
+    else:
+        lines.append("All patch_ready items have been processed.")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote {path}")
+    return path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Review and apply healing-queue patches.")
+    parser.add_argument("--list", action="store_true")
+    parser.add_argument("--show", metavar="PATCH_ID")
+    parser.add_argument("--patch", metavar="PATCH_ID")
+    parser.add_argument("--decision", choices=("heal", "skip", "defer"))
+    parser.add_argument("--reason", default="User chose not to heal")
+    parser.add_argument("--summary", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--workspace", default=".", type=Path)
+    args = parser.parse_args()
+    workspace = args.workspace.resolve()
+    ensure_queue_dirs()
+
+    if args.list:
+        ready = list_patch_ready()
+        if not ready:
+            print("No patches awaiting review (patch_ready).")
+            return 0
+        for entry in ready:
+            print(f"- {entry.get('patch_id')} (failure {entry.get('failure_id')})")
+        return 0
+
+    if args.show:
+        payload = load_patch(args.show, QUEUE_PATCHES)
+        print(format_patch_for_human(args.show, payload, workspace))
+        return 0
+
+    if args.patch and args.decision:
+        if args.decision == "heal":
+            return decision_heal(args.patch, workspace=workspace, dry_run=args.dry_run)
+        if args.decision == "skip":
+            return decision_skip(args.patch, args.reason)
+        return decision_defer(args.patch)
+
+    if args.summary:
+        write_summary(workspace)
+        return 0
+
+    parser.print_help()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

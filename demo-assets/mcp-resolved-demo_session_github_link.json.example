@@ -1,0 +1,12 @@
+{
+  "proposal": {
+    "classification": "selector_break",
+    "patch_type": "registry_only",
+    "semantic_key": "demo.session_github_link",
+    "confidence": 0.92,
+    "reason": "Verified GitHub link via browser_snapshot on seleniumbase demo page",
+    "files_changed": ["locator_registry.yaml"],
+    "validation_command": "pytest tests/test_demo_total_failure.py --run-demo-session -q",
+    "patch": "demo.session_github_link:\n  intent: verify SeleniumBase GitHub link (team demo — repaired)\n  action: expect_visible\n  preferred:\n    - type: role\n      role: link\n      name: SeleniumBase on GitHub\n  fallback:\n    - type: css\n      value: '#myLink2'\n"
+  }
+}

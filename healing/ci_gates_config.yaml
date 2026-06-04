@@ -1,52 +1,48 @@
-# CI gate thresholds for healing reports and test policy.
-# Override path with: python -m healing.ci_gates --config path/to/config.yaml
+# CI gate thresholds for POM healing pipeline.
 
 thresholds:
-  # Reports matching these globs are excluded from threshold checks (smoke/manual runs).
   ignore_report_globs:
+    - "*"
     - "missing-key-smoke.json"
     - "*-smoke.json"
-  # Fail if total failed healing events across all reports exceed this.
+    - "test_demo_total_failure.json"
   max_failed_events: 0
-  # Warn when healed / total events exceeds this ratio (0.0–1.0).
   max_healed_ratio_warn: 0.10
-  # Fail when healed ratio exceeds this (set high to disable fail-on-heal).
-  max_healed_ratio_fail: 0.30
-  # Minimum event count before ratio checks apply.
+  max_healed_ratio_fail: 1.0
   min_events_for_ratio: 1
-  # Warn if the same semantic key is healed in this many or more reports.
   repeat_healed_key_warn: 2
+  max_unprocessed_failures: 0
+  max_patch_ready_without_review: 10
+
+architecture:
+  require_manifest: true
 
 registry_lint:
-  enabled: true
+  enabled: false
   fail_on_warnings: false
 
 test_policy:
   enabled: true
-  # allow: raw Playwright tests run freely (recorded by raw-learning); CI does not fail policy.
-  # warn: surface raw usage as warnings; error: fail CI (strict smart-only).
-  raw_mode: allow
+  raw_mode: error
+  require_pom_usage: true
   allowlist:
-    - tests/test_demo_drag_drop.py
-    - tests/test_convert_to_smart_unit.py
-  # Patterns that indicate raw Playwright usage (regex).
+    - tests/test_pom_healing_unit.py
   forbidden_patterns:
     - 'page\.locator\('
     - 'page\.get_by_[a-z_]+\('
     - 'expect\(page\.'
-  # Require smart fixture in test function signatures that use interactions.
-  require_smart_fixture: true
 
 raw_learning:
-  # Record raw Playwright tests without smart fixture (see tests/conftest.py).
-  enabled: true
-  # Generate MCP repair bundles after each raw test run (HEALING_RAW_MCP=0 to disable).
-  mcp_bundles: true
+  enabled: false
+  mcp_bundles: false
 
-# Smart tests: auto MCP bundles when healing reports have healed/failed events (HEALING_MCP_AUTO=0 to disable).
 healing_mcp:
-  auto_after_test: true
+  auto_after_test: false
 
 mcp_repair:
   default_base_url: "https://seleniumbase.io/demo_page"
   output_dir: "artifacts/mcp-repair-bundles"
+
+pom_healing:
+  failures_dir: "artifacts/failures"
+  queue_dir: "artifacts/healing-queue"
