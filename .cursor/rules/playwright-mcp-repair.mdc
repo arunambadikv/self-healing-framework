@@ -1,0 +1,56 @@
+---
+description: Use Playwright MCP to repair locator_registry.yaml from healing reports and MCP repair bundles. Apply when fixing selectors, missing semantic keys, or promoting healed fallbacks.
+globs:
+  - locator_registry.yaml
+  - artifacts/healing-reports/**
+  - artifacts/mcp-repair-bundles/**
+  - healing/**
+  - tests/**
+alwaysApply: false
+---
+
+# Playwright MCP Locator Repair
+
+When repairing locators in this project:
+
+1. Use the connected **Playwright MCP** server (`user-playwright` / `playwright`).
+2. Read the repair prompt: `artifacts/mcp-repair-bundles/prompts/<key>__<trigger>.md`
+3. Read MCP tool plan: `artifacts/mcp-repair-bundles/mcp-plans/<key>__<trigger>.json`
+
+## Required MCP sequence
+
+1. `browser_navigate` — open `base_url` from the bundle (default demo: https://seleniumbase.io/demo_page)
+2. `browser_snapshot` — accessibility tree; find element matching semantic intent
+3. Optionally `browser_evaluate` — verify CSS candidate count/visibility
+
+## Locator priority
+
+`test_id → role → label → placeholder → text → css`
+
+## Skills
+
+- `skills/playwright-locator-repair/SKILL.md`
+- `skills/playwright-registry-update/SKILL.md`
+- `skills/playwright-locator-patching/SKILL.md`
+
+## Rules
+
+- Update `locator_registry.yaml` only unless instructed otherwise.
+- Do not weaken assertions or rewrite tests to force pass.
+- Do not add arbitrary sleeps.
+
+## Output
+
+Write resolved repair JSON to:
+
+`artifacts/mcp-repair-bundles/resolved/<semantic_key_with_underscores>.json`
+
+Include `LocatorPatchResult` with `patch` as YAML for the registry entry.
+
+## Apply after review
+
+```bash
+python -m healing.mcp_apply --key <semantic_key> --apply
+pytest <affected_test> -q
+python -m healing.ci_gates
+```

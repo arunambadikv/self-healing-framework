@@ -1,0 +1,29 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Playwright / MCP runtime artifacts
+.playwright-mcp/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Generated healing outputs (reproduced by pytest / pipelines)
+artifacts/
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
