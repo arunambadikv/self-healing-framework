@@ -15,6 +15,63 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
+## Branch policy
+
+Repository: [arunambadikv/self-healing-framework](https://github.com/arunambadikv/self-healing-framework)
+
+```bash
+git clone https://github.com/arunambadikv/self-healing-framework.git
+cd self-healing-framework
+git checkout dev    # day-to-day work and future auto-healing
+```
+
+| Branch | Purpose |
+|--------|---------|
+| **`dev`** | Default integration branch: tests, registry edits, MCP/agent repair, and (when enabled) automated healing commits. Push here freely. |
+| **`main`** | Stable, reviewed line. Changes land only via pull request after CI passes. |
+
+### GitHub protection for `main`
+
+Configure once in the repo: **Settings → Branches → Add rule** (branch name pattern: `main`).
+
+1. **Require a pull request before merging** — blocks direct pushes to `main`. Promote work with `dev` → `main` PRs ([open PR](https://github.com/arunambadikv/self-healing-framework/compare/main...dev)).
+2. **Require status checks to pass before merging** — select the check that appears after at least one PR has run Actions (see below).
+3. **Require branches to be up to date before merging** (recommended) — the PR must include the latest `main` so CI ran on the real merge result.
+
+Optional but useful: **Dismiss stale pull request approvals when new commits are pushed**, **Require conversation resolution before merging**, and **Include administrators** so admins follow the same rules.
+
+**Do not** add the same strict protection to **`dev`** while automated healing may push commits there without a PR.
+
+### Required status check (CI on PRs to `main`)
+
+Workflow: **Healing Framework CI** (`.github/workflows/healing-ci.yml`), job: **`test-and-gates`**.
+
+GitHub may show the required check as `test-and-gates` or `Healing Framework CI / test-and-gates`. If the list is empty, open any PR into `main`, wait for Actions to finish, then return to the branch rule and select that check.
+
+That job runs:
+
+- `pytest tests/ -q`
+- `python -m healing.registry_lint`
+- `python -m healing.ci_gates`
+
+MCP repair bundle generation in the same workflow uses `continue-on-error: true` and does not block merge.
+
+### Typical workflow
+
+```text
+feature/fix on dev → push origin/dev → PR dev → main → CI green → merge
+```
+
+Local verification before opening a PR:
+
+```bash
+pytest tests/ -q
+python -m healing.registry_lint
+python -m healing.ci_gates
+```
+
+Future **dev-only** auto-healing (bot commits on `dev`, not on `main`) will use a separate workflow; `main` stays PR + human review only.
+
 ## Running Tests
 
 Run all tests:
