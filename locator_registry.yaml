@@ -108,6 +108,16 @@ demo.docs_link:
   fallback:
   - type: css
     value: '#myLink3'
+demo.session_github_link:
+  intent: verify SeleniumBase GitHub link (team demo — broken until MCP repair)
+  action: expect_visible
+  preferred:
+  - type: role
+    role: link
+    name: WRONG_GITHUB_LINK_DEMO
+  fallback:
+  - type: css
+    value: '#nonexistent_demo_github_link'
 demo.select_dropdown:
   intent: select a value from the progress dropdown
   action: select_option

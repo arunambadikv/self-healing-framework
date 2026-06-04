@@ -105,3 +105,23 @@ def smart(page: Page, registry, healing_report, request):
             f"healed={summary.get('healed', 0)} failed={summary.get('failed', 0)} "
             f"→ artifacts/mcp-repair-bundles/prompts/"
         )
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-demo-session",
+        action="store_true",
+        default=False,
+        help="Run tests marked demo_session (team demos with intentionally broken registry keys).",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-demo-session"):
+        return
+    skip = pytest.mark.skip(
+        reason="Team demo only: pytest --run-demo-session tests/test_demo_total_failure.py"
+    )
+    for item in items:
+        if "demo_session" in item.keywords:
+            item.add_marker(skip)

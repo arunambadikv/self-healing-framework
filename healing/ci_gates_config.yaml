@@ -6,6 +6,7 @@ thresholds:
   ignore_report_globs:
     - "missing-key-smoke.json"
     - "*-smoke.json"
+    - "test_demo_total_failure.json"
   # Fail if total failed healing events across all reports exceed this.
   max_failed_events: 0
   # Warn when healed / total events exceeds this ratio (0.0–1.0).

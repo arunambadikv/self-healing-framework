@@ -6,6 +6,8 @@ The first validation target is the [SeleniumBase demo page](https://seleniumbase
 
 For a consolidated team status (completed work, advantages, limitations, MCP/agent roadmap), see [PROJECT_STATUS.md](PROJECT_STATUS.md).
 
+**Team demo runbook (architecture, smart vs raw tests, healing/MCP live scripts):** [DEMO_SESSION.md](DEMO_SESSION.md).
+
 ## Installation
 
 ```bash
