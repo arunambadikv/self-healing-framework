@@ -16,6 +16,8 @@ playwright install chromium
 python -m healing.architecture_scan
 ```
 
+For automated MCP propose (Phase C), set `CURSOR_API_KEY` in `.env` (see `.env.example`). The `cursor-sdk` package is included in `requirements.txt`.
+
 ## Quick start
 
 ```python
@@ -33,7 +35,8 @@ pytest tests/ -v
 
 python -m healing.architecture_scan
 python -m healing.pom_propose --process-all
-# Cursor Agent + Playwright MCP completes P-*.json in artifacts/healing-queue/patches/
+python -m healing.mcp_propose_runner --process-all   # needs CURSOR_API_KEY + venv
+# or opt-in auto chain after healable locator failures: HEALING_MCP_AUTO=1 pytest tests/ -v
 
 python -m healing.healing_review --list
 python -m healing.healing_review --patch P-<id> --decision heal
@@ -51,6 +54,10 @@ python -m healing.healing_review --summary
 
 ## CI
 
+GitHub Actions runs **test** → **propose-on-failure** (on failure) → **healing-gates** (full queue checks after propose).
+
+Local:
+
 ```bash
 pytest tests/ -q
 python -m healing.architecture_scan
@@ -64,7 +71,7 @@ bash scripts/run_ci_gates.sh
 Repository: [arunambadikv/self-healing-framework](https://github.com/arunambadikv/self-healing-framework)
 
 - **`dev`** — integration and healing work
-- **`main`** — PR + green **Healing Framework CI** (`test-and-gates`)
+- **`main`** — PR + green **Healing Framework CI** (`test` + `healing-gates`)
 
 See [AGENTS.md](AGENTS.md) and GitHub branch protection for `main`.
 
@@ -79,8 +86,18 @@ artifacts/          # generated (gitignored): failures/, healing-queue/, archite
 demo-assets/        # example MCP resolved JSON
 ```
 
-## Demo session test (intentional failure)
+## Healing flow demos (opt-in)
+
+Two intentional locator breaks to exercise the full pipeline. See [docs/HEALING_DEMO.md](docs/HEALING_DEMO.md).
 
 ```bash
-pytest tests/test_demo_total_failure.py --run-demo-session -v
+pytest tests/test_healing_flow_demo.py --run-healing-demo -v
+```
+
+## Demo session test (deprecated)
+
+Use [docs/HEALING_DEMO.md](docs/HEALING_DEMO.md) instead:
+
+```bash
+pytest tests/test_healing_flow_demo.py --run-healing-demo -v
 ```

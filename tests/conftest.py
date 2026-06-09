@@ -43,23 +43,30 @@ def pytest_runtest_makereport(item, call):
         return
 
     collector = getattr(item, "_healing_step_trace", None)
-    base_url = "https://seleniumbase.io/demo_page"
+    base_url = os.environ.get("HEALING_BASE_URL", "https://seleniumbase.io/demo_page")
     page_url = None
-    screenshot_path = None
+    page = None
     try:
         page = item.funcargs.get("page")
         if page is not None:
             page_url = page.url
-            failures_dir = Path("artifacts/failures")
-            failures_dir.mkdir(parents=True, exist_ok=True)
-            shot = failures_dir / f"screenshot-{item.name}.png"
-            page.screenshot(path=str(shot))
-            screenshot_path = str(shot.resolve())
     except Exception:
         pass
 
     try:
-        from healing.failure_report import capture_from_exception
+        from healing.failure_report import capture_from_exception, new_failure_id
+
+        failure_id = new_failure_id()
+        screenshot_path = None
+        if page is not None:
+            try:
+                failures_dir = Path("artifacts/failures")
+                failures_dir.mkdir(parents=True, exist_ok=True)
+                shot = failures_dir / f"screenshot-{failure_id}.png"
+                page.screenshot(path=str(shot))
+                screenshot_path = str(shot.resolve())
+            except Exception:
+                pass
 
         failure_id, json_path, md_path = capture_from_exception(
             test_nodeid=item.nodeid,
@@ -70,11 +77,13 @@ def pytest_runtest_makereport(item, call):
             exc=exc,
             step_trace=collector,
             screenshot_path=screenshot_path,
+            failure_id=failure_id,
         )
         print(
             f"\n[healing] failure captured: {failure_id}\n"
             f"  json={json_path}\n  md={md_path}\n"
-            f"  next: python -m healing.pom_propose --failure-id {failure_id}"
+            f"  next: python -m healing.pom_propose --failure-id {failure_id}\n"
+            f"  or: export HEALING_MCP_AUTO=1 to auto-run scan → stub → MCP at session end"
         )
     except Exception as hook_exc:
         print(f"\n[healing] failure capture error: {hook_exc}")
@@ -87,14 +96,27 @@ def pytest_addoption(parser):
         default=False,
         help="Run tests marked demo_session.",
     )
+    parser.addoption(
+        "--run-healing-demo",
+        action="store_true",
+        default=False,
+        help="Run tests marked healing_demo.",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
-    if config.getoption("--run-demo-session"):
-        return
-    skip = pytest.mark.skip(
-        reason="Team demo only: pytest --run-demo-session tests/test_demo_total_failure.py"
-    )
-    for item in items:
-        if "demo_session" in item.keywords:
-            item.add_marker(skip)
+    if not config.getoption("--run-demo-session"):
+        skip_demo = pytest.mark.skip(
+            reason="Team demo only: pytest --run-demo-session tests/test_demo_total_failure.py"
+        )
+        for item in items:
+            if "demo_session" in item.keywords:
+                item.add_marker(skip_demo)
+
+    if not config.getoption("--run-healing-demo"):
+        skip_healing = pytest.mark.skip(
+            reason="Healing demo only: pytest --run-healing-demo tests/test_healing_flow_demo.py"
+        )
+        for item in items:
+            if "healing_demo" in item.keywords:
+                item.add_marker(skip_healing)

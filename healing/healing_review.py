@@ -117,6 +117,9 @@ def decision_heal(patch_id: str, *, workspace: Path, dry_run: bool = False) -> i
     if not dry_run:
         update_patch_status(patch_id, "applied")
         move_patch_file(patch_id, QUEUE_APPLIED)
+        from healing.healing_reports import emit_patch_applied
+
+        emit_patch_applied(patch_id, proposal)
     print(f"[ok] Applied patch {patch_id}")
     return 0
 
@@ -126,6 +129,9 @@ def decision_skip(patch_id: str, reason: str) -> int:
     write_skip_rca(patch_id, payload, reason)
     update_patch_status(patch_id, "skipped", notes=reason)
     move_patch_file(patch_id, QUEUE_SKIPPED)
+    from healing.healing_reports import emit_patch_skipped
+
+    emit_patch_skipped(patch_id, payload.get("proposal") or payload, reason)
     print(f"[ok] Skipped patch {patch_id}; RCA written")
     return 0
 

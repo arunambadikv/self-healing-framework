@@ -30,6 +30,7 @@ class GateConfig:
     require_architecture_manifest: bool = True
     max_unprocessed_failures: int = 0
     max_patch_ready_without_review: int = 10
+    max_awaiting_agent: int = 5
 
 
 @dataclass
@@ -68,6 +69,7 @@ def load_gate_config(path: Path) -> GateConfig:
         max_patch_ready_without_review=int(
             thresholds.get("max_patch_ready_without_review", 10)
         ),
+        max_awaiting_agent=int(thresholds.get("max_awaiting_agent", 5)),
     )
 
 
@@ -138,6 +140,7 @@ def run_ci_gates(
     reports_dir: Path,
     registry_path: Path,
     tests_dir: Path,
+    skip_queue_gates: bool = False,
 ) -> tuple[int, list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -159,21 +162,27 @@ def run_ci_gates(
                     "Architecture manifest is stale. Run: python -m healing.architecture_scan"
                 )
 
-    from healing.healing_queue import get_index_summary, list_unprocessed_failures, list_patch_ready
+    if not skip_queue_gates:
+        from healing.healing_queue import list_awaiting_agent, list_patch_ready, list_unprocessed_failures
 
-    summary = get_index_summary()
-    unprocessed = len(list_unprocessed_failures())
-    if unprocessed > config.max_unprocessed_failures:
-        errors.append(
-            f"Unprocessed failures ({unprocessed}) exceed max_unprocessed_failures "
-            f"({config.max_unprocessed_failures}). Run healing-propose or review."
-        )
-    patch_ready = len(list_patch_ready())
-    if patch_ready > config.max_patch_ready_without_review:
-        warnings.append(
-            f"Patches awaiting review ({patch_ready}) exceed soft limit "
-            f"({config.max_patch_ready_without_review}). Run /healing-review."
-        )
+        unprocessed = len(list_unprocessed_failures())
+        if unprocessed > config.max_unprocessed_failures:
+            errors.append(
+                f"Unprocessed failures ({unprocessed}) exceed max_unprocessed_failures "
+                f"({config.max_unprocessed_failures}). Run healing-propose or review."
+            )
+        awaiting_agent = len(list_awaiting_agent())
+        if awaiting_agent > config.max_awaiting_agent:
+            warnings.append(
+                f"Patches awaiting MCP agent ({awaiting_agent}) exceed soft limit "
+                f"({config.max_awaiting_agent}). Run mcp_propose_runner or complete via Cursor."
+            )
+        patch_ready = len(list_patch_ready())
+        if patch_ready > config.max_patch_ready_without_review:
+            warnings.append(
+                f"Patches awaiting review ({patch_ready}) exceed soft limit "
+                f"({config.max_patch_ready_without_review}). Run /healing-review."
+            )
 
     if config.test_policy_enabled:
         policy_errors, policy_warnings = check_test_policy(
@@ -258,6 +267,11 @@ def main() -> int:
         action="store_true",
         help="Skip healing report threshold checks (registry + policy only).",
     )
+    parser.add_argument(
+        "--skip-queue-gates",
+        action="store_true",
+        help="Skip healing-queue checks (unprocessed/awaiting_agent/patch_ready).",
+    )
     args = parser.parse_args()
 
     workspace = Path(args.workspace).resolve()
@@ -278,6 +292,7 @@ def main() -> int:
         reports_dir=reports_dir,
         registry_path=workspace / args.registry,
         tests_dir=workspace / args.tests_dir,
+        skip_queue_gates=args.skip_queue_gates,
     )
 
     print("=== CI Gates Summary ===")

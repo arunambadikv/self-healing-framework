@@ -35,6 +35,11 @@ class DemoPage(BasePage):
         return self.page.get_by_role("button", name="Click Me (Green)")
 
     @property
+    def healing_demo_green_button(self) -> Locator:
+        """Healing demo: intentionally broken until MCP repair."""
+        return self.page.get_by_role("button", name="Click Me (Blue)")
+
+    @property
     def paragraph_text(self) -> Locator:
         return self.page.get_by_text("Paragraph with Text:")
 
@@ -148,6 +153,13 @@ class DemoPage(BasePage):
 
     def click_green_button(self) -> None:
         self._click_locator("click_green_button", "green_button", self.green_button)
+
+    def click_healing_demo_green_button(self) -> None:
+        self._click_locator(
+            "click_healing_demo_green_button",
+            "healing_demo_green_button",
+            self.healing_demo_green_button,
+        )
 
     def expect_paragraph_text_visible(self) -> None:
         self._expect_visible("expect_paragraph_text_visible", "paragraph_text", self.paragraph_text)

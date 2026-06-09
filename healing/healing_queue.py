@@ -20,12 +20,24 @@ from healing.paths import (
 STATUSES = frozenset(
     {
         "pending_proposal",
+        "awaiting_agent",
         "patch_ready",
         "applied",
         "skipped",
         "deferred",
+        "not_healable",
     }
 )
+
+
+def is_patch_complete(proposal: dict[str, Any]) -> bool:
+    """True when a patch proposal has MCP-verified locator updates."""
+    if proposal.get("proposal_status") == "awaiting_agent":
+        return False
+    updates = proposal.get("architecture_updates") or []
+    if not updates:
+        return False
+    return not any("TODO" in str(u.get("after", "")) for u in updates)
 
 
 def _utc_now() -> str:
@@ -62,7 +74,10 @@ def register_failure(
     *,
     json_path: Path,
     md_path: Path,
+    status: str = "pending_proposal",
 ) -> None:
+    if status not in STATUSES:
+        raise ValueError(f"Invalid status: {status}")
     index = _load_index()
     if _find_entry(index, failure_id=failure_id):
         return
@@ -70,7 +85,7 @@ def register_failure(
         {
             "failure_id": failure_id,
             "patch_id": None,
-            "status": "pending_proposal",
+            "status": status,
             "failure_json": str(json_path.resolve()),
             "failure_md": str(md_path.resolve()),
             "patch_json": None,
@@ -108,13 +123,39 @@ def list_patch_ready() -> list[dict[str, Any]]:
     return [e for e in index.get("entries", []) if e.get("status") == "patch_ready"]
 
 
+def list_awaiting_agent() -> list[dict[str, Any]]:
+    index = _load_index()
+    return [e for e in index.get("entries", []) if e.get("status") == "awaiting_agent"]
+
+
+def mark_failure_not_healable(failure_id: str, *, reason: str) -> None:
+    index = _load_index()
+    entry = _find_entry(index, failure_id=failure_id)
+    if entry is None:
+        raise KeyError(f"Unknown failure_id: {failure_id}")
+    entry["status"] = "not_healable"
+    entry["notes"] = reason
+    entry["processed_at"] = _utc_now()
+    pending = QUEUE_PENDING / f"{failure_id}.json"
+    if pending.exists():
+        pending.unlink()
+    payload = load_failure_payload(failure_id)
+    payload["processed"] = True
+    payload["classification"] = payload.get("classification") or "unknown"
+    payload["not_healable_reason"] = reason
+    (FAILURES_DIR / f"{failure_id}.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8"
+    )
+    _save_index(index)
+
+
 def mark_failure_proposed(failure_id: str, patch_id: str, *, patch_json: Path, patch_md: Path) -> None:
     index = _load_index()
     entry = _find_entry(index, failure_id=failure_id)
     if entry is None:
         raise KeyError(f"Unknown failure_id: {failure_id}")
     entry["patch_id"] = patch_id
-    entry["status"] = "patch_ready"
+    entry["status"] = "awaiting_agent"
     entry["patch_json"] = str(patch_json.resolve())
     entry["patch_md"] = str(patch_md.resolve())
     entry["processed_at"] = _utc_now()
@@ -127,6 +168,22 @@ def mark_failure_proposed(failure_id: str, patch_id: str, *, patch_json: Path, p
         json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8"
     )
     _save_index(index)
+
+
+def mark_patch_ready(patch_id: str) -> None:
+    """Promote an awaiting_agent patch to patch_ready after MCP completion."""
+    patch_path = QUEUE_PATCHES / f"{patch_id}.json"
+    if not patch_path.exists():
+        raise FileNotFoundError(f"Patch not found: {patch_path}")
+    payload = json.loads(patch_path.read_text(encoding="utf-8"))
+    proposal = payload.get("proposal") or payload
+    if not is_patch_complete(proposal):
+        raise ValueError(
+            f"Patch {patch_id} is incomplete (TODO placeholders or awaiting_agent status)."
+        )
+    proposal["proposal_status"] = "complete"
+    patch_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+    update_patch_status(patch_id, "patch_ready")
 
 
 def update_patch_status(patch_id: str, status: str, *, notes: str = "") -> None:

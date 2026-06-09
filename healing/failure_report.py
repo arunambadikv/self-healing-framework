@@ -12,6 +12,7 @@ from typing import Any
 
 from healing.paths import FAILURES_DIR, ensure_queue_dirs
 from healing.healing_queue import register_failure
+from healing.failure_classifier import classify_failure, is_healable
 from healing.step_trace import StepTraceCollector
 
 
@@ -64,7 +65,7 @@ def build_failure_payload(
             f"{failing_step.get('page_class')}.{failing_step.get('locator_id') or failing_step.get('method')}"
         )
 
-    return {
+    payload = {
         "schema_version": 1,
         "failure_id": failure_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -91,6 +92,9 @@ def build_failure_payload(
             "screenshot": screenshot_path,
         },
     }
+    payload["classification"] = classify_failure(payload)
+    payload["healable"] = is_healable(payload)
+    return payload
 
 
 def write_failure_markdown(payload: dict[str, Any]) -> str:
@@ -113,6 +117,8 @@ def write_failure_markdown(payload: dict[str, Any]) -> str:
     ]
     if payload.get("architecture_ref"):
         lines.extend([f"**Architecture ref:** `{payload['architecture_ref']}`", ""])
+    if payload.get("classification"):
+        lines.extend([f"**Classification:** `{payload['classification']}`", ""])
     if failing:
         lines.extend(
             [
@@ -154,7 +160,15 @@ def save_failure_report(
     md_path = FAILURES_DIR / f"{failure_id}.md"
     json_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
     md_path.write_text(write_failure_markdown(payload), encoding="utf-8")
-    register_failure(failure_id, json_path=json_path, md_path=md_path)
+    initial_status = "not_healable" if not payload.get("healable") else "pending_proposal"
+    register_failure(failure_id, json_path=json_path, md_path=md_path, status=initial_status)
+    if payload.get("healable"):
+        from healing.session_state import note_healable_failure
+
+        note_healable_failure()
+    from healing.healing_reports import emit_failure_captured
+
+    emit_failure_captured(payload)
     return json_path, md_path
 
 
@@ -168,8 +182,9 @@ def capture_from_exception(
     exc: BaseException,
     step_trace: StepTraceCollector | None,
     screenshot_path: str | None = None,
+    failure_id: str | None = None,
 ) -> tuple[str, Path, Path]:
-    failure_id = new_failure_id()
+    failure_id = failure_id or new_failure_id()
     payload = build_failure_payload(
         failure_id=failure_id,
         test_nodeid=test_nodeid,

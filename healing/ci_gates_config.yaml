@@ -2,7 +2,6 @@
 
 thresholds:
   ignore_report_globs:
-    - "*"
     - "missing-key-smoke.json"
     - "*-smoke.json"
     - "test_demo_total_failure.json"
@@ -13,6 +12,7 @@ thresholds:
   repeat_healed_key_warn: 2
   max_unprocessed_failures: 0
   max_patch_ready_without_review: 10
+  max_awaiting_agent: 5
 
 architecture:
   require_manifest: true

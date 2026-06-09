@@ -7,7 +7,7 @@ on:
     branches: [main, master]
 
 jobs:
-  test-and-gates:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,13 +23,12 @@ jobs:
           playwright install chromium
 
       - name: Run pytest
+        id: pytest
         run: pytest tests/ -q
+        continue-on-error: true
 
       - name: Architecture manifest
         run: python -m healing.architecture_scan
-
-      - name: CI gates (POM policy + healing queue)
-        run: python -m healing.ci_gates
 
       - name: Upload healing artifacts
         if: always()
@@ -40,4 +39,106 @@ jobs:
             artifacts/failures/
             artifacts/healing-queue/
             artifacts/architecture/
+            artifacts/healing-reports/
           if-no-files-found: ignore
+
+      - name: Fail if pytest failed
+        if: steps.pytest.outcome == 'failure'
+        run: exit 1
+
+  propose-on-failure:
+    needs: test
+    if: failure() && needs.test.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download healing artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: healing-artifacts
+          path: artifacts
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Create stub patches
+        run: python -m healing.pom_propose --process-all
+
+      - name: Complete patches via SDK + Playwright MCP
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: python -m healing.mcp_propose_runner --process-all
+
+      - name: Summarize patches for review
+        if: always()
+        run: |
+          echo "## Healing patches awaiting review" >> "$GITHUB_STEP_SUMMARY"
+          python -m healing.healing_review --list >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          for patch in $(python -m healing.healing_review --list 2>/dev/null | sed 's/- //' | cut -d' ' -f1); do
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            python -m healing.healing_review --show "$patch" >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          done
+
+      - name: Upload updated healing artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: healing-artifacts-post-propose
+          path: |
+            artifacts/failures/
+            artifacts/healing-queue/
+            artifacts/architecture/
+            artifacts/healing-reports/
+          if-no-files-found: ignore
+
+  healing-gates:
+    needs: [test, propose-on-failure]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download post-propose artifacts
+        if: needs.propose-on-failure.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: healing-artifacts-post-propose
+          path: artifacts
+
+      - name: Download test artifacts
+        if: needs.propose-on-failure.result != 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: healing-artifacts
+          path: artifacts
+
+      - name: Refresh architecture manifest
+        run: python -m healing.architecture_scan
+
+      - name: CI gates (policy + healing queue)
+        run: python -m healing.ci_gates
+
+      - name: Fail if pytest failed
+        if: needs.test.result == 'failure'
+        run: exit 1
