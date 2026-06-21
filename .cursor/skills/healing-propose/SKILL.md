@@ -19,6 +19,12 @@ Turn new failures into reviewable patch proposals without applying changes.
    - Playwright MCP: navigate + snapshot
    - Write `artifacts/healing-queue/patches/P-<id>.json` and `.md`
 4. Or batch stubs: `python -m healing.pom_propose --process-all` then complete TODOs via MCP.
+5. After MCP completes `P-*.json`, promote to review queue:
+   ```bash
+   python -m healing.healing_review --promote P-<id>
+   # or: python -m healing.healing_review --promote-all
+   ```
+   (`--list` auto-runs `--promote-all` first.)
 
 ## Rules
 

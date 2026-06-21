@@ -15,6 +15,7 @@ from healing.healing_queue import (
     mark_failure_proposed,
 )
 from healing.failure_classifier import classify_failure, is_healable
+from healing.locator_source import read_property_return_expression, resolve_page_path
 from healing.paths import MANIFEST_JSON, QUEUE_PATCHES, ensure_queue_dirs
 
 
@@ -94,7 +95,10 @@ def write_stub_patch(
     file_path = arch_ctx.get("file") or "pages/demo_page.py"
     locator_id = arch_ctx.get("locator_id") or "unknown"
     loc = arch_ctx.get("locator") or {}
-    before_expr = loc.get("expression", "TODO")
+    page_path = resolve_page_path(workspace, file_path)
+    before_expr = read_property_return_expression(page_path, locator_id)
+    if not before_expr:
+        before_expr = loc.get("expression", "TODO")
 
     proposal = {
         "patch_id": patch_id,

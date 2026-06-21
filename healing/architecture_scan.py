@@ -25,9 +25,12 @@ def _file_hash(paths: list[Path]) -> str:
     return digest.hexdigest()[:16]
 
 
-def _locator_expression_from_function(node: ast.FunctionDef) -> str:
+def _locator_expression_from_function(source: str, node: ast.FunctionDef) -> str:
     for child in ast.walk(node):
         if isinstance(child, ast.Return) and child.value is not None:
+            segment = ast.get_source_segment(source, child.value)
+            if segment:
+                return segment.strip()
             try:
                 return ast.unparse(child.value)
             except Exception:
@@ -36,7 +39,8 @@ def _locator_expression_from_function(node: ast.FunctionDef) -> str:
 
 
 def _scan_page_file(path: Path) -> dict[str, Any]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
     classes: dict[str, Any] = {}
     for node in tree.body:
         if not isinstance(node, ast.ClassDef):
@@ -54,7 +58,7 @@ def _scan_page_file(path: Path) -> dict[str, Any]:
                     locators[item.name] = {
                         "line": item.lineno,
                         "kind": "property",
-                        "expression": _locator_expression_from_function(item),
+                        "expression": _locator_expression_from_function(source, item),
                     }
                 elif not item.name.startswith("__"):
                     methods[item.name] = {

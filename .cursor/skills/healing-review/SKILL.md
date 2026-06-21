@@ -1,6 +1,6 @@
 ---
 name: healing-review
-description: Human-in-the-loop review of healing-queue patches (patch_ready). Show failure context and proposed locator changes; apply via pom_apply or skip with RCA. Use when the user runs /healing-review.
+description: Human-in-the-loop review of healing-queue patches (patch_ready). Interactive terminal menu or agent-guided heal/skip/defer with review cards. Use when the user runs /healing-review.
 disable-model-invocation: true
 ---
 
@@ -14,12 +14,35 @@ Use **`/playwright-locator-repair`** during propose/MCP; this skill is for **hum
 
 ## Steps
 
-1. Run: `python -m healing.healing_review --list`
-2. For each pending patch, present to the user:
-   - Failure narrative (`artifacts/failures/F-*.md`)
-   - Steps taken, URL, error
-   - **Proposed change**: file, symbol, before → after, risk_level
-3. Ask: **Heal** | **Skip** | **Defer**
+### Terminal (recommended)
+
+```bash
+python -m healing.healing_review --interactive
+# or simply (TTY default):
+python -m healing.healing_review
+```
+
+Guided menu per patch: **Heal** | **Skip** | **Defer** | **Show failure** | **Dry run** | **Quit**
+
+List patches first (table view):
+
+```bash
+python -m healing.healing_review --list
+```
+
+### Cursor chat (agent)
+
+1. Run `python -m healing.healing_review --list` (auto-promotes complete `awaiting_agent` patches first).
+2. For **each** pending patch:
+   - Run `python -m healing.healing_review --show P-<id>` for the review card.
+   - Present failure context, before → after, risk, and `validation_command` in plain language.
+   - Use **AskQuestion** (or equivalent) with options:
+     - **Heal** — apply patch
+     - **Skip** — reject (ask for reason if not obvious)
+     - **Defer** — leave for later
+     - **Show failure report** — read `artifacts/failures/F-*.md` and continue
+     - **Dry run** — `python -m healing.healing_review --patch P-<id> --decision heal --dry-run`
+3. Execute the user's choice via CLI (never auto-heal without confirmation).
 
 ### Heal
 
@@ -39,15 +62,23 @@ python -m healing.healing_review --patch P-<id> --decision skip --reason "suspec
 
 Writes `artifacts/healing-queue/skipped/P-<id>-rca.md` with bug/RCA hints.
 
+Interactive mode offers common skip reasons; custom text is also supported.
+
 ### Defer
 
-Leave status `patch_ready` for a later session.
+```bash
+python -m healing.healing_review --patch P-<id> --decision defer
+```
+
+Or choose **Defer** in interactive mode — skips for now; patch stays `patch_ready`.
 
 4. When no `patch_ready` remains:
 
 ```bash
 python -m healing.healing_review --summary
 ```
+
+(Interactive mode writes summary automatically when all patches are processed.)
 
 ## Patch safety (apply time)
 
@@ -76,4 +107,5 @@ python -m healing.healing_review --summary
 
 - Use plain language; include test name, page class, method, and locator id.
 - Always show `validation_command` before heal.
-- Never auto-heal **high** risk without explicit user confirmation in chat.
+- Never auto-heal **high** risk without explicit user confirmation in chat (interactive mode requires typing `yes`).
+- One patch at a time — wait for user decision before moving to the next.

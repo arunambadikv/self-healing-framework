@@ -37,7 +37,7 @@ class DemoPage(BasePage):
     @property
     def healing_demo_green_button(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
-        return self.page.get_by_role("button", name="Click Me (Blue)")
+        return self.page.get_by_role("button", name="Click Me (Green)")
 
     @property
     def paragraph_text(self) -> Locator:
@@ -62,7 +62,7 @@ class DemoPage(BasePage):
     @property
     def session_github_link(self) -> Locator:
         """Team demo: intentionally broken until MCP repair."""
-        return self.page.get_by_role("link", name="WRONG_GITHUB_LINK_DEMO")
+        return self.page.get_by_role("link", name="SeleniumBase on GitHub")
 
     @property
     def select_dropdown(self) -> Locator:

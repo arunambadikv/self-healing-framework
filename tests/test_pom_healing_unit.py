@@ -20,6 +20,64 @@ def test_build_manifest_includes_demo_page(tmp_path: Path, monkeypatch):
     manifest = build_manifest(workspace)
     assert "DemoPage" in manifest.get("pages", {})
     assert manifest.get("content_hash")
+    session_link = manifest["pages"]["DemoPage"]["locators"]["session_github_link"]["expression"]
+    assert '"SeleniumBase on GitHub"' in session_link
+    assert "'SeleniumBase on GitHub'" not in session_link
+
+
+def test_extract_property_return_expression_preserves_source_quotes():
+    from healing.locator_source import extract_property_return_expression
+
+    source = '''class DemoPage:
+    @property
+    def session_github_link(self) -> Locator:
+        """Team demo: intentionally broken until MCP repair."""
+        return self.page.get_by_role("link", name="WRONG_GITHUB_LINK_DEMO")
+'''
+    expr = extract_property_return_expression(source, "session_github_link")
+    assert expr == 'self.page.get_by_role("link", name="WRONG_GITHUB_LINK_DEMO")'
+
+
+def test_write_stub_patch_uses_exact_source_expression(tmp_path: Path, monkeypatch):
+    from healing.pom_propose import write_stub_patch
+
+    monkeypatch.chdir(tmp_path)
+    ensure_queue_dirs()
+    pages_dir = tmp_path / "pages"
+    pages_dir.mkdir()
+    page_file = pages_dir / "demo_page.py"
+    page_file.write_text(
+        '''class DemoPage:
+    @property
+    def healing_demo_green_button(self) -> Locator:
+        """Healing demo: intentionally broken until MCP repair."""
+        return self.page.get_by_role("button", name="Click Me (Blue)")
+''',
+        encoding="utf-8",
+    )
+    manifest = {
+        "pages": {
+            "DemoPage": {
+                "file": str(page_file),
+                "locators": {
+                    "healing_demo_green_button": {
+                        "line": 3,
+                        "expression": "self.page.get_by_role('button', name='Click Me (Blue)')",
+                    }
+                },
+            }
+        }
+    }
+    failure = {
+        "failure_id": "F-stubexpr01",
+        "architecture_ref": "DemoPage.healing_demo_green_button",
+        "test": {"file": "tests/test_healing_flow_demo.py"},
+    }
+    patch_id, json_path, _ = write_stub_patch(failure, manifest=manifest, workspace=tmp_path)
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    before = payload["proposal"]["architecture_updates"][0]["before"]
+    assert before == 'self.page.get_by_role("button", name="Click Me (Blue)")'
+    assert patch_id.startswith("P-")
 
 
 def test_healing_queue_register_and_propose(tmp_path: Path, monkeypatch):
@@ -133,6 +191,69 @@ def test_is_patch_complete_rejects_todo():
             "architecture_updates": [{"after": "return self.page.get_by_role('button', name='Go')"}],
         }
     )
+    assert is_patch_complete(
+        {
+            "proposal_status": "awaiting_agent",
+            "architecture_updates": [
+                {"after": "return self.page.get_by_role('button', name='Click Me (Green)')"}
+            ],
+        }
+    )
+
+
+def test_promote_patch_skill_path_parity(tmp_path: Path, monkeypatch):
+    from healing.patch_promote import promote_patch
+
+    monkeypatch.chdir(tmp_path)
+    ensure_queue_dirs()
+    failure_id = "F-promote01"
+    patch_id = "P-promote01"
+    payload = {
+        "failure_id": failure_id,
+        "processed": False,
+        "test": {"nodeid": "t", "file": "tests/t.py", "name": "t"},
+        "error": {"type": "TimeoutError", "message": "locator timeout"},
+        "architecture_ref": "DemoPage.healing_demo_green_button",
+        "failing_step": {"locator_id": "healing_demo_green_button"},
+    }
+    json_path = FAILURES_DIR / f"{failure_id}.json"
+    md_path = FAILURES_DIR / f"{failure_id}.md"
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps(payload), encoding="utf-8")
+    md_path.write_text("# fail", encoding="utf-8")
+    register_failure(failure_id, json_path=json_path, md_path=md_path)
+
+    patch_json = tmp_path / "artifacts/healing-queue/patches" / f"{patch_id}.json"
+    patch_json.parent.mkdir(parents=True, exist_ok=True)
+    patch_json.write_text(
+        json.dumps(
+            {
+                "proposal": {
+                    "patch_id": patch_id,
+                    "failure_id": failure_id,
+                    "proposal_status": "awaiting_agent",
+                    "architecture_updates": [
+                        {
+                            "file": "pages/demo_page.py",
+                            "symbol": "healing_demo_green_button",
+                            "before": "return self.page.get_by_role('button', name='Click Me (Blue)')",
+                            "after": "return self.page.get_by_role('button', name='Click Me (Green)')",
+                        }
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    patch_md = patch_json.with_suffix(".md")
+    patch_md.write_text("# patch", encoding="utf-8")
+    mark_failure_proposed(failure_id, patch_id, patch_json=patch_json, patch_md=patch_md)
+
+    promote_patch(patch_id)
+    index = json.loads(QUEUE_INDEX.read_text(encoding="utf-8"))
+    assert index["entries"][0]["status"] == "patch_ready"
+    saved = json.loads(patch_json.read_text(encoding="utf-8"))
+    assert saved["proposal"]["proposal_status"] == "complete"
 
 
 def test_ci_gates_skip_queue_gates(tmp_path: Path, monkeypatch):

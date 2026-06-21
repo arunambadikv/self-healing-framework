@@ -4,10 +4,29 @@ Two opt-in tests with **intentionally broken locators** to exercise the full hea
 
 capture → classify → propose → MCP runner → human review → apply.
 
-Run only when explicitly requested (skipped in normal CI):
+Run only when explicitly requested (skipped in normal CI). **Opens a visible browser** with slow-mo so you can watch the demo:
 
 ```bash
 pytest tests/test_healing_flow_demo.py --run-healing-demo -v
+```
+
+Optional: adjust pause between actions (milliseconds):
+
+```bash
+HEALING_DEMO_SLOW_MO=800 pytest tests/test_healing_flow_demo.py --run-healing-demo -v
+```
+
+Or use the helper script:
+
+```bash
+bash scripts/run_healing_demo_visual.sh
+bash scripts/run_healing_demo_visual.sh tests/test_healing_flow_demo.py::test_healing_demo_github_link
+```
+
+For Playwright Inspector (step-through debugger), add `--headed` is already on; use:
+
+```bash
+PWDEBUG=1 pytest tests/test_healing_flow_demo.py::test_healing_demo_github_link --run-healing-demo -v
 ```
 
 ## Prerequisites
@@ -33,8 +52,10 @@ python -m healing.architecture_scan
 ```bash
 pytest tests/test_healing_flow_demo.py::test_healing_demo_github_link --run-healing-demo -v
 python -m healing.pom_propose --process-all
-python -m healing.mcp_propose_runner --process-all
-python -m healing.healing_review --list
+python -m healing.mcp_propose_runner --process-all   # SDK path → patch_ready
+# skill path instead of mcp_propose_runner: /playwright-locator-repair then:
+# python -m healing.healing_review --promote P-<id>
+python -m healing.healing_review --list               # auto-promotes if skill path used
 python -m healing.healing_review --show P-<id>
 python -m healing.healing_review --patch P-<id> --decision heal
 pytest tests/test_healing_flow_demo.py::test_healing_demo_github_link --run-healing-demo -v
@@ -58,6 +79,8 @@ python -m healing.healing_review --show P-<id>
 python -m healing.healing_review --patch P-<id> --decision heal
 pytest tests/test_healing_flow_demo.py::test_healing_demo_green_button --run-healing-demo -v
 ```
+
+(Skill path: replace `mcp_propose_runner` with `/playwright-locator-repair`, then `--promote P-<id>` or `--list`.)
 
 Run **one test at a time** to keep the healing queue easy to review.
 

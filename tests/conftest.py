@@ -13,6 +13,29 @@ def base_url():
     return os.environ.get("HEALING_BASE_URL", "https://seleniumbase.io/demo_page")
 
 
+@pytest.fixture(scope="session")
+def browser_type_launch_args(pytestconfig, browser_type_launch_args):
+    """Show the browser when running healing demos."""
+    if not pytestconfig.getoption("--run-healing-demo"):
+        return browser_type_launch_args
+    slow_mo = int(os.environ.get("HEALING_DEMO_SLOW_MO", "400"))
+    return {
+        **browser_type_launch_args,
+        "headless": False,
+        "slow_mo": slow_mo,
+    }
+
+
+@pytest.fixture(scope="session")
+def browser_context_args(pytestconfig, browser_context_args):
+    if not pytestconfig.getoption("--run-healing-demo"):
+        return browser_context_args
+    return {
+        **browser_context_args,
+        "viewport": {"width": 1280, "height": 720},
+    }
+
+
 @pytest.fixture
 def demo(page: Page, base_url) -> DemoPage:
     return DemoPage(page, base_url)
@@ -100,7 +123,7 @@ def pytest_addoption(parser):
         "--run-healing-demo",
         action="store_true",
         default=False,
-        help="Run tests marked healing_demo.",
+        help="Run tests marked healing_demo (opens visible browser with slow-mo).",
     )
 
 

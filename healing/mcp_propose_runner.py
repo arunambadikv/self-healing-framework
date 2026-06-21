@@ -12,7 +12,6 @@ from typing import Any
 from healing.healing_queue import (
     is_patch_complete,
     list_awaiting_agent,
-    mark_patch_ready,
 )
 from healing.paths import QUEUE_PATCHES, ensure_queue_dirs
 from healing.skill_paths import load_skill_text
@@ -106,7 +105,9 @@ def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str 
     payload = json.loads(patch_path.read_text(encoding="utf-8"))
     proposal = payload.get("proposal") or payload
     if is_patch_complete(proposal):
-        mark_patch_ready(patch_id)
+        from healing.patch_promote import promote_patch
+
+        promote_patch(patch_id)
         print(f"[ok] {patch_id} already complete → patch_ready")
         return True
 
@@ -133,10 +134,9 @@ def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str 
         print(f"[error] {patch_id} still incomplete after agent run (TODO remains)")
         return False
 
-    mark_patch_ready(patch_id)
-    from healing.healing_reports import emit_patch_ready
+    from healing.patch_promote import promote_patch
 
-    emit_patch_ready(patch_id, proposal)
+    promote_patch(patch_id)
     print(f"[ok] {patch_id} → patch_ready")
     return True
 

@@ -4,7 +4,8 @@ Page Object Model tests (`pages/*.py`) with **fail-fast** execution and a **post
 
 **Demo app:** [SeleniumBase demo page](https://seleniumbase.io/demo_page)
 
-**Operator guide:** [AGENTS.md](AGENTS.md)
+**Operator guide:** [AGENTS.md](AGENTS.md)  
+**Project status:** [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)
 
 ## Installation
 
@@ -92,6 +93,7 @@ Two intentional locator breaks to exercise the full pipeline. See [docs/HEALING_
 
 ```bash
 pytest tests/test_healing_flow_demo.py --run-healing-demo -v
+# opens a visible browser (slow-mo 400ms; set HEALING_DEMO_SLOW_MO to change)
 ```
 
 ## Demo session test (deprecated)

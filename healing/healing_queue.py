@@ -31,9 +31,7 @@ STATUSES = frozenset(
 
 
 def is_patch_complete(proposal: dict[str, Any]) -> bool:
-    """True when a patch proposal has MCP-verified locator updates."""
-    if proposal.get("proposal_status") == "awaiting_agent":
-        return False
+    """True when architecture_updates have MCP-verified locator expressions (no TODO)."""
     updates = proposal.get("architecture_updates") or []
     if not updates:
         return False

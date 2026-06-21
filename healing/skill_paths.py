@@ -11,6 +11,7 @@ SKILL_FILE_MAP = {
     "architecture-discovery": SKILLS_ROOT / "architecture-discovery" / "SKILL.md",
     "healing-propose": SKILLS_ROOT / "healing-propose" / "SKILL.md",
     "healing-review": SKILLS_ROOT / "healing-review" / "SKILL.md",
+    "push-to-dev": SKILLS_ROOT / "push-to-dev" / "SKILL.md",
 }
 
 

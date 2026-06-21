@@ -42,8 +42,12 @@ def apply_architecture_update(
         new_content = content.replace(before, after, 1)
         message = f"Replaced locator expression for '{symbol}' in {update['file']}"
     elif symbol and after:
-        # Replace return line inside @property def symbol
-        pattern = rf"(@property\s+def\s+{re.escape(symbol)}\s*\([^)]*\)\s*->[^:]+:\s*\n\s*return\s+)(.+)"
+        # Replace return expression inside @property def symbol (docstring allowed)
+        pattern = (
+            rf"(@property\s+def\s+{re.escape(symbol)}\s*\([^)]*\)\s*->[^:]+:\s*"
+            rf"(?:\n\s+\"\"\"[\s\S]*?\"\"\"\s*)?"
+            rf"\n\s*return\s+)(.+)"
+        )
         match = re.search(pattern, content)
         if match:
             new_content = content[: match.start(2)] + after + content[match.end(2) :]

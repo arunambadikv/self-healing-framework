@@ -1,5 +1,7 @@
 # Agent Instructions — Playwright POM Healing Framework
 
+**Project status:** [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) — update when changing pipeline phases, architecture layout, or branch/CI policy.
+
 ## Architecture
 
 - **Tests:** raw Playwright via `demo` fixture (`DemoPage` in [`pages/demo_page.py`](pages/demo_page.py))
@@ -19,6 +21,7 @@
 | Human review | `/healing-review` → `python -m healing.healing_review --list` |
 | Locator repair (MCP + proposals) | `/playwright-locator-repair` |
 | Human review + apply | `/healing-review` |
+| Push to dev | `/push-to-dev` |
 
 ## Playwright MCP setup
 
@@ -86,19 +89,27 @@ pytest tests/ -v
 
 Agent task file per patch: `artifacts/healing-queue/patches/P-<id>-agent-task.md`
 
-Use Playwright MCP (`browser_navigate`, `browser_snapshot`) to fill real `architecture_updates` in `P-*.json`. Human apply is still required — do not edit `pages/*.py` during propose.
+Use Playwright MCP (`browser_navigate`, `browser_snapshot`) to fill real `architecture_updates` in `P-*.json`. Then promote:
+
+```bash
+python -m healing.healing_review --promote P-<id>
+```
+
+Human apply is still required — do not edit `pages/*.py` during propose.
 
 ### 4. Human review (required before apply)
 
 ```bash
-python -m healing.healing_review --list
+python -m healing.healing_review --list    # table view; auto-promotes complete awaiting_agent patches
+python -m healing.healing_review --interactive   # guided heal/skip/defer menu (default on TTY)
+python -m healing.healing_review --promote P-<id>   # after skill-only MCP repair
 python -m healing.healing_review --show P-<id>
 python -m healing.healing_review --patch P-<id> --decision heal
 python -m healing.healing_review --patch P-<id> --decision skip --reason "app regression"
 python -m healing.healing_review --summary
 ```
 
-Patches with TODO placeholders or `proposal_status: awaiting_agent` cannot be applied.
+Patches with TODO placeholders cannot be applied. Run `--promote` first if queue status is still `awaiting_agent`.
 
 ### 5. CI
 

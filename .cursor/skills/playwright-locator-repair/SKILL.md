@@ -23,6 +23,10 @@ Repair broken Playwright locators in `pages/*.py` safely and minimally. Use with
 3. If selector_break: **Playwright MCP** — `browser_navigate` (base_url from failure), `browser_snapshot`.
 4. Propose locators from the live page (not guesses).
 5. Write `artifacts/healing-queue/patches/P-<id>.json` with `architecture_updates` targeting **one property** in `pages/*.py`.
+6. Promote to review queue (same as CLI after `mcp_propose_runner`):
+   ```bash
+   python -m healing.healing_review --promote P-<id>
+   ```
 
 ## Locator priority
 
