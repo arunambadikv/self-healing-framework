@@ -330,3 +330,20 @@ def test_should_run_post_test_chain_gating(tmp_path: Path, monkeypatch):
 
     reset_session_state()
     assert not should_run_post_test_chain(tmp_path)
+
+
+def test_build_agent_prompt_uses_workspace_relative_patch_path(tmp_path: Path, monkeypatch):
+    from healing.mcp_propose_runner import build_agent_prompt
+    from healing.paths import QUEUE_PATCHES, ensure_queue_dirs
+
+    monkeypatch.chdir(tmp_path)
+    ensure_queue_dirs()
+    patch_id = "P-test123"
+    (QUEUE_PATCHES / f"{patch_id}.json").write_text('{"proposal": {}}', encoding="utf-8")
+
+    prompt = build_agent_prompt(
+        {"patch_id": patch_id, "failure_id": "F-test"},
+        tmp_path.resolve(),
+    )
+
+    assert "artifacts/healing-queue/patches/P-test123.json" in prompt

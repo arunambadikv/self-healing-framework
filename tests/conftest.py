@@ -4,13 +4,14 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page
 
-from pages.demo_page import DemoPage
+from pages.orangehrm_dashboard_page import ORANGEHRM_DASHBOARD_URL, OrangeHrmDashboardPage
+from pages.orangehrm_login_page import ORANGEHRM_LOGIN_URL, OrangeHrmLoginPage
 from healing.step_trace import StepTraceCollector, reset_step_trace, set_active_step_trace
 
 
 @pytest.fixture(scope="session")
 def base_url():
-    return os.environ.get("HEALING_BASE_URL", "https://seleniumbase.io/demo_page")
+    return os.environ.get("HEALING_BASE_URL", ORANGEHRM_LOGIN_URL)
 
 
 @pytest.fixture(scope="session")
@@ -37,8 +38,13 @@ def browser_context_args(pytestconfig, browser_context_args):
 
 
 @pytest.fixture
-def demo(page: Page, base_url) -> DemoPage:
-    return DemoPage(page, base_url)
+def orangehrm_login(page: Page, base_url) -> OrangeHrmLoginPage:
+    return OrangeHrmLoginPage(page, base_url)
+
+
+@pytest.fixture
+def orangehrm_dashboard(page: Page) -> OrangeHrmDashboardPage:
+    return OrangeHrmDashboardPage(page, ORANGEHRM_DASHBOARD_URL)
 
 
 @pytest.fixture(autouse=True)
@@ -66,7 +72,7 @@ def pytest_runtest_makereport(item, call):
         return
 
     collector = getattr(item, "_healing_step_trace", None)
-    base_url = os.environ.get("HEALING_BASE_URL", "https://seleniumbase.io/demo_page")
+    base_url = os.environ.get("HEALING_BASE_URL", ORANGEHRM_LOGIN_URL)
     page_url = None
     page = None
     try:
@@ -138,7 +144,7 @@ def pytest_collection_modifyitems(config, items):
 
     if not config.getoption("--run-healing-demo"):
         skip_healing = pytest.mark.skip(
-            reason="Healing demo only: pytest --run-healing-demo tests/test_healing_flow_demo.py"
+            reason="Healing demo only: pytest --run-healing-demo tests/test_orangehrm_healing.py"
         )
         for item in items:
             if "healing_demo" in item.keywords:

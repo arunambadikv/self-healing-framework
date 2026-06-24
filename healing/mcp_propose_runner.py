@@ -42,6 +42,13 @@ def _load_mcp_servers(workspace: Path) -> dict[str, Any]:
     }
 
 
+def _workspace_relative(path: Path, workspace: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(workspace.resolve()))
+    except ValueError:
+        return str(path)
+
+
 def build_agent_prompt(entry: dict[str, Any], workspace: Path) -> str:
     patch_id = entry.get("patch_id", "")
     task_path = QUEUE_PATCHES / f"{patch_id}-agent-task.md"
@@ -52,6 +59,7 @@ def build_agent_prompt(entry: dict[str, Any], workspace: Path) -> str:
 
     skill_text = load_skill_text("playwright-locator-repair")
     patch_json = QUEUE_PATCHES / f"{patch_id}.json"
+    patch_rel = _workspace_relative(patch_json, workspace)
     return f"""{skill_text}
 
 ---
@@ -63,7 +71,7 @@ def build_agent_prompt(entry: dict[str, Any], workspace: Path) -> str:
 ## Instructions
 
 1. Use Playwright MCP (`browser_navigate`, `browser_snapshot`) to verify the correct locator.
-2. Update `{patch_json.relative_to(workspace)}` — replace TODO in `architecture_updates[].after`.
+2. Update `{patch_rel}` — replace TODO in `architecture_updates[].after`.
 3. Update matching `{patch_id}.md` with human-readable summary.
 4. Set `proposal_status` to `"complete"` (remove `"awaiting_agent"`).
 5. Set accurate `risk_level`, `risk_reason`, and `validation_command`.
