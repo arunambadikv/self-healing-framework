@@ -4,18 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from healing.paths import MANIFEST_JSON
-
-
-def _python() -> str:
-    return sys.executable
 
 
 def _load_healing_config(workspace: Path) -> dict[str, Any]:
@@ -47,30 +41,47 @@ def manifest_is_stale(workspace: Path) -> bool:
         return True
 
 
-def run_architecture_scan_if_needed(workspace: Path) -> None:
+def run_architecture_scan_if_needed(workspace: Path) -> int:
     if not manifest_is_stale(workspace):
-        return
-    subprocess.run(
-        [_python(), "-m", "healing.architecture_scan", "--workspace", str(workspace)],
-        cwd=workspace,
-        check=False,
-    )
+        return 0
+    from healing.architecture_scan import build_manifest, write_manifest
+
+    manifest = build_manifest(workspace)
+    write_manifest(manifest, workspace)
+    return 0
 
 
-def run_pom_propose_all(workspace: Path) -> None:
-    subprocess.run(
-        [_python(), "-m", "healing.pom_propose", "--process-all", "--workspace", str(workspace)],
-        cwd=workspace,
-        check=False,
-    )
+def run_pom_propose_all(workspace: Path) -> int:
+    from healing.healing_queue import list_unprocessed_failures
+    from healing.pom_propose import process_failure_entry
+
+    rc = 0
+    for entry in list_unprocessed_failures():
+        try:
+            process_failure_entry(entry, workspace=workspace)
+        except Exception as exc:
+            print(f"[healing] pom_propose failed for {entry.get('failure_id')}: {exc}")
+            rc = 1
+    return rc
 
 
-def run_mcp_propose_all(workspace: Path) -> None:
-    subprocess.run(
-        [_python(), "-m", "healing.mcp_propose_runner", "--process-all", "--workspace", str(workspace)],
-        cwd=workspace,
-        check=False,
-    )
+def run_mcp_propose_all(workspace: Path) -> int:
+    from healing.healing_queue import list_awaiting_agent
+    from healing.mcp_propose_runner import process_patch_entry
+
+    api_key = os.environ.get("CURSOR_API_KEY", "").strip() or None
+    awaiting = list_awaiting_agent()
+    if not awaiting:
+        return 0
+    rc = 0
+    for entry in awaiting:
+        try:
+            if not process_patch_entry(entry, workspace=workspace, api_key=api_key):
+                rc = 1
+        except Exception as exc:
+            print(f"[healing] mcp_propose_runner failed for {entry.get('patch_id')}: {exc}")
+            rc = 1
+    return rc
 
 
 def should_run_post_test_chain(workspace: Path | None = None) -> bool:
@@ -95,6 +106,15 @@ def run_post_test_chain(workspace: Path | None = None) -> None:
         )
         return
     print("\n[healing] HEALING_MCP_AUTO enabled — running post-test chain")
-    run_architecture_scan_if_needed(workspace)
-    run_pom_propose_all(workspace)
-    run_mcp_propose_all(workspace)
+    steps = (
+        ("architecture_scan", run_architecture_scan_if_needed),
+        ("pom_propose", run_pom_propose_all),
+        ("mcp_propose_runner", run_mcp_propose_all),
+    )
+    failed: list[str] = []
+    for name, runner in steps:
+        rc = runner(workspace)
+        if rc != 0:
+            failed.append(name)
+    if failed:
+        print(f"[healing] post-test chain completed with errors: {', '.join(failed)}")

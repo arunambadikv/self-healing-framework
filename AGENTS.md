@@ -4,9 +4,9 @@
 
 ## Architecture
 
-- **Tests:** raw Playwright via `demo` fixture (`DemoPage` in [`pages/demo_page.py`](pages/demo_page.py))
+- **Tests:** page-object fixtures (e.g. `orangehrm_login` in [`pages/orangehrm_login_page.py`](pages/orangehrm_login_page.py)); override app via `HEALING_BASE_URL`
 - **Locators:** Python properties on page classes only (no `locator_registry.yaml` in runtime path)
-- **Failures:** `artifacts/failures/F-*.json` + `.md` (auto on pytest failure)
+- **Failures:** `artifacts/failures/F-*.json` + `.md` + screenshot + `storage-state-F-*.json` (auto on pytest failure)
 - **Patches:** `artifacts/healing-queue/patches/P-*.json` (after MCP propose)
 - **Manifest:** `artifacts/architecture/manifest.json` (run scan before propose/review)
 - **Queue statuses:** `pending_proposal` → `awaiting_agent` → `patch_ready` → `applied` | `skipped` | `not_healable`
@@ -44,7 +44,7 @@ export CURSOR_API_KEY=cursor_...
 ### 1. Test fails (automatic)
 
 ```bash
-pytest tests/test_demo_buttons_links.py -v
+pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run-healing-demo -v
 # → artifacts/failures/F-<id>.json + .md
 # → classification: selector_break | network | app_regression | ...
 # → non-healable failures marked not_healable in queue index
@@ -100,7 +100,8 @@ Human apply is still required — do not edit `pages/*.py` during propose.
 ### 4. Human review (required before apply)
 
 ```bash
-python -m healing.healing_review --list    # table view; auto-promotes complete awaiting_agent patches
+python -m healing.healing_review --list    # read-only table of patch_ready entries
+python -m healing.healing_review --promote-all   # promote complete awaiting_agent patches
 python -m healing.healing_review --interactive   # guided heal/skip/defer menu (default on TTY)
 python -m healing.healing_review --promote P-<id>   # after skill-only MCP repair
 python -m healing.healing_review --show P-<id>
@@ -134,12 +135,18 @@ python -m healing.ci_gates
 Two intentional locator breaks for end-to-end pipeline testing. See [docs/HEALING_DEMO.md](docs/HEALING_DEMO.md).
 
 ```bash
-pytest tests/test_healing_flow_demo.py --run-healing-demo -v
+pytest tests/test_orangehrm_healing.py --run-healing-demo -v
+```
+
+After `/healing-review` heal, reset intentional breaks before the next demo:
+
+```bash
+python scripts/reset_healing_demos.py
 ```
 
 ## Demo session test (deprecated)
 
-Replaced by `tests/test_healing_flow_demo.py` — use `--run-healing-demo` instead of `--run-demo-session`.
+Removed — use `tests/test_orangehrm_healing.py` with `--run-healing-demo` instead of `--run-demo-session`.
 
 ## Legacy
 

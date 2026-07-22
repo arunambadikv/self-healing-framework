@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from healing.healing_queue import (
+    find_open_patch_for_architecture_ref,
+    link_failure_to_existing_patch,
     list_unprocessed_failures,
     load_failure_payload,
     mark_failure_not_healable,
@@ -53,13 +55,43 @@ def build_proposal_prompt(
 ) -> str:
     failure_id = failure["failure_id"]
     arch = _architecture_context_for_ref(manifest, failure.get("architecture_ref"))
+    env = failure.get("environment") or {}
+    page_url = env.get("page_url") or base_url
+    artifacts = failure.get("artifacts") or {}
+    storage_state = artifacts.get("storage_state")
+    failing = failure.get("failing_step") or {}
+    steps = failure.get("test_steps") or []
+    prior_steps = [s for s in steps if s.get("index", 0) < failing.get("index", len(steps))]
+
+    restore_block = ""
+    if storage_state:
+        restore_block = f"""
+## Session restore (preferred)
+- Playwright MCP is started with `--isolated --storage-state={storage_state}` when available.
+- Or call `browser_set_storage_state` with path `{storage_state}` if the browser is already open.
+- Then `browser_navigate` → `{page_url}` (failure page, not only base_url).
+- Then `browser_snapshot` — find element for `{failure.get('architecture_ref')}`.
+"""
+    else:
+        restore_block = f"""
+## Reach failure context (no storage_state)
+1. Prefer `browser_navigate` → `{page_url}` if that URL already shows the failing UI.
+2. Otherwise replay successful steps before the failure (use *correct* locators from `pages/*.py` / manifest; skip the failing step):
+```json
+{json.dumps(prior_steps, indent=2)}
+```
+3. Then `browser_snapshot` — find element for `{failure.get('architecture_ref')}`.
+"""
+
     return f"""# Healing proposal task — {failure_id}
 
 ## Failure summary
 - Test: `{failure['test']['nodeid']}`
 - Error: `{failure['error']['type']}` — {failure['error']['message'][:400]}
 - Architecture ref: `{failure.get('architecture_ref')}`
-- Page URL: {failure.get('environment', {}).get('page_url')}
+- Base URL: {base_url}
+- Page URL at failure: {page_url}
+- storage_state: {storage_state or "(none)"}
 
 ## Architecture context
 ```json
@@ -67,11 +99,11 @@ def build_proposal_prompt(
 ```
 
 ## Steps before failure
-{json.dumps(failure.get('test_steps', []), indent=2)}
-
+{json.dumps(steps, indent=2)}
+{restore_block}
 ## Required actions (Playwright MCP + Agent)
-1. `browser_navigate` → {base_url}
-2. `browser_snapshot` — find element for `{failure.get('architecture_ref')}`
+1. Reach the failure UI using session restore or step replay above (do not guess locators).
+2. `browser_snapshot` — find the real element for `{failure.get('architecture_ref')}`.
 3. Update the existing stub at `artifacts/healing-queue/patches/{patch_id}.json` (patch id `{patch_id}`)
 4. Include `architecture_updates` targeting `pages/*.py` only (file, symbol, line, before, after)
 5. Set `risk_level` (low/medium/high) and `validation_command`
@@ -92,7 +124,9 @@ def write_stub_patch(
     patch_id = new_patch_id()
     failure_id = failure["failure_id"]
     arch_ctx = _architecture_context_for_ref(manifest, failure.get("architecture_ref"))
-    file_path = arch_ctx.get("file") or "pages/demo_page.py"
+    page_class = (failure.get("architecture_ref") or "").partition(".")[0]
+    page_info = manifest.get("pages", {}).get(page_class, {})
+    file_path = arch_ctx.get("file") or page_info.get("file") or "pages/unknown.py"
     locator_id = arch_ctx.get("locator_id") or "unknown"
     loc = arch_ctx.get("locator") or {}
     page_path = resolve_page_path(workspace, file_path)
@@ -169,7 +203,22 @@ def process_failure_entry(entry: dict[str, Any], *, workspace: Path) -> str | No
         return None
 
     manifest = _load_manifest(workspace)
-    base_url = failure.get("environment", {}).get("base_url", "https://seleniumbase.io/demo_page")
+    architecture_ref = failure.get("architecture_ref")
+    existing = find_open_patch_for_architecture_ref(
+        architecture_ref or "",
+        exclude_failure_id=failure_id,
+    )
+    if existing:
+        patch_id = existing.get("patch_id")
+        link_failure_to_existing_patch(
+            failure_id,
+            existing,
+            note=f"Linked to existing open patch for {architecture_ref}",
+        )
+        print(f"[skip] {failure_id}: linked to existing patch {patch_id} ({architecture_ref})")
+        return patch_id
+
+    base_url = failure.get("environment", {}).get("base_url") or ""
 
     patch_id, json_path, md_path = write_stub_patch(failure, manifest=manifest, workspace=workspace)
     prompt_path = QUEUE_PATCHES / f"{patch_id}-agent-task.md"

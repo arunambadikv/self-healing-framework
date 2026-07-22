@@ -29,13 +29,26 @@ class OrangeHrmLoginPage(BasePage):
     @property
     def healing_demo_login_button(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
-        return self.page.get_by_role("button", name="Login")
+        return self.page.get_by_role("button", name="Sign In")
+
+    @property
+    def healing_demo_username_input(self) -> Locator:
+        """Healing demo: intentionally broken until MCP repair."""
+        return self.page.get_by_role("textbox", name="User Name")
 
     def fill_username(self, value: str) -> None:
         self._fill_locator("fill_username", "username_input", self.username_input, value)
 
     def fill_password(self, value: str) -> None:
         self._fill_locator("fill_password", "password_input", self.password_input, value)
+
+    def fill_healing_demo_username(self, value: str) -> None:
+        self._fill_locator(
+            "fill_healing_demo_username",
+            "healing_demo_username_input",
+            self.healing_demo_username_input,
+            value,
+        )
 
     def click_login(self) -> None:
         self._click_locator("click_login", "login_button", self.login_button)

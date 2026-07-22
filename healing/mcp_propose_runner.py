@@ -12,32 +12,66 @@ from typing import Any
 from healing.healing_queue import (
     is_patch_complete,
     list_awaiting_agent,
+    load_failure_payload,
 )
 from healing.paths import QUEUE_PATCHES, ensure_queue_dirs
 from healing.skill_paths import load_skill_text
 
 
-def _load_mcp_servers(workspace: Path) -> dict[str, Any]:
+def resolve_storage_state_path(failure: dict[str, Any], workspace: Path) -> Path | None:
+    """Return absolute path to failure storage_state if it exists on disk."""
+    raw = (failure.get("artifacts") or {}).get("storage_state")
+    if not raw:
+        return None
+    path = Path(str(raw))
+    if not path.is_absolute():
+        path = workspace / path
+    return path if path.exists() else None
+
+
+def _with_storage_state_args(args: list[str], storage_state: Path) -> list[str]:
+    cleaned = [a for a in args if a != "--isolated" and not str(a).startswith("--storage-state")]
+    cleaned.append("--isolated")
+    cleaned.append(f"--storage-state={storage_state.resolve()}")
+    return cleaned
+
+
+def _load_mcp_servers(
+    workspace: Path,
+    *,
+    storage_state: Path | None = None,
+) -> dict[str, Any]:
     """Load Playwright MCP stdio config from .cursor/mcp.json."""
     from cursor_sdk import StdioMcpServerConfig
 
     mcp_path = workspace / ".cursor" / "mcp.json"
+    command = "npx"
+    args: list[str] = ["@playwright/mcp@latest"]
+    env: dict[str, str] = {}
+
     if mcp_path.exists():
         data = json.loads(mcp_path.read_text(encoding="utf-8"))
         servers = data.get("mcpServers") or {}
-        playwright = servers.get("playwright") or servers.get("project-0-playwright-healing-framework-playwright")
+        playwright = servers.get("playwright") or servers.get(
+            "project-0-playwright-healing-framework-playwright"
+        )
         if playwright and playwright.get("command"):
-            return {
-                "playwright": StdioMcpServerConfig(
-                    command=playwright["command"],
-                    args=list(playwright.get("args") or []),
-                    env=dict(playwright.get("env") or {}),
-                )
-            }
+            command = playwright["command"]
+            args = list(playwright.get("args") or [])
+            env = dict(playwright.get("env") or {})
+
+    if storage_state is not None:
+        args = _with_storage_state_args(args, storage_state)
+        env = {
+            **env,
+            "PLAYWRIGHT_MCP_STORAGE_STATE": str(storage_state.resolve()),
+        }
+
     return {
         "playwright": StdioMcpServerConfig(
-            command="npx",
-            args=["@playwright/mcp@latest"],
+            command=command,
+            args=args,
+            env=env,
         )
     }
 
@@ -49,7 +83,12 @@ def _workspace_relative(path: Path, workspace: Path) -> str:
         return str(path)
 
 
-def build_agent_prompt(entry: dict[str, Any], workspace: Path) -> str:
+def build_agent_prompt(
+    entry: dict[str, Any],
+    workspace: Path,
+    *,
+    storage_state: Path | None = None,
+) -> str:
     patch_id = entry.get("patch_id", "")
     task_path = QUEUE_PATCHES / f"{patch_id}-agent-task.md"
     if task_path.exists():
@@ -60,6 +99,20 @@ def build_agent_prompt(entry: dict[str, Any], workspace: Path) -> str:
     skill_text = load_skill_text("playwright-locator-repair")
     patch_json = QUEUE_PATCHES / f"{patch_id}.json"
     patch_rel = _workspace_relative(patch_json, workspace)
+
+    restore_note = ""
+    if storage_state is not None:
+        restore_note = (
+            f"\nPlaywright MCP was started with `--isolated --storage-state={storage_state}`.\n"
+            "Navigate to the failure `page_url` first, then snapshot.\n"
+            "If needed, call `browser_set_storage_state` with that same path.\n"
+        )
+    else:
+        restore_note = (
+            "\nNo storage_state available — replay successful `test_steps` before the failing "
+            "step (correct locators from pages/*.py), or navigate to `page_url` if sufficient.\n"
+        )
+
     return f"""{skill_text}
 
 ---
@@ -67,10 +120,10 @@ def build_agent_prompt(entry: dict[str, Any], workspace: Path) -> str:
 # Automated MCP propose task
 
 {task_text}
-
+{restore_note}
 ## Instructions
 
-1. Use Playwright MCP (`browser_navigate`, `browser_snapshot`) to verify the correct locator.
+1. Use Playwright MCP to reach the failure UI, then `browser_snapshot` to verify the correct locator.
 2. Update `{patch_rel}` — replace TODO in `architecture_updates[].after`.
 3. Update matching `{patch_id}.md` with human-readable summary.
 4. Set `proposal_status` to `"complete"` (remove `"awaiting_agent"`).
@@ -81,10 +134,16 @@ Return a one-line summary when done.
 """
 
 
-def run_sdk_propose(prompt: str, *, workspace: Path, api_key: str) -> str:
+def run_sdk_propose(
+    prompt: str,
+    *,
+    workspace: Path,
+    api_key: str,
+    storage_state: Path | None = None,
+) -> str:
     from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
 
-    mcp_servers = _load_mcp_servers(workspace)
+    mcp_servers = _load_mcp_servers(workspace, storage_state=storage_state)
     result = Agent.prompt(
         prompt,
         AgentOptions(
@@ -127,10 +186,29 @@ def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str 
         )
         return False
 
-    prompt = build_agent_prompt(entry, workspace)
+    storage_state: Path | None = None
+    failure_id = entry.get("failure_id") or proposal.get("failure_id")
+    if failure_id:
+        try:
+            failure = load_failure_payload(str(failure_id))
+            storage_state = resolve_storage_state_path(failure, workspace)
+        except FileNotFoundError:
+            storage_state = None
+
+    if storage_state is not None:
+        print(f"[healing] Using storage_state for {patch_id}: {storage_state}")
+    else:
+        print(f"[healing] No storage_state for {patch_id} — agent will use page_url / step replay")
+
+    prompt = build_agent_prompt(entry, workspace, storage_state=storage_state)
     print(f"[healing] Running SDK + Playwright MCP for {patch_id}...")
     try:
-        summary = run_sdk_propose(prompt, workspace=workspace, api_key=api_key)
+        summary = run_sdk_propose(
+            prompt,
+            workspace=workspace,
+            api_key=api_key,
+            storage_state=storage_state,
+        )
         print(f"[healing] Agent: {summary[:200]}")
     except Exception as exc:
         print(f"[error] SDK propose failed for {patch_id}: {exc}")

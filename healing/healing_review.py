@@ -201,7 +201,6 @@ def main() -> int:
         return run_interactive_review(workspace)
 
     if args.list:
-        decision_promote_all()
         ready = list_patch_ready()
         print(format_patch_list(ready, workspace=workspace))
         return 0

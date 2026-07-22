@@ -24,7 +24,7 @@ Turn new failures into reviewable patch proposals without applying changes.
    python -m healing.healing_review --promote P-<id>
    # or: python -m healing.healing_review --promote-all
    ```
-   (`--list` auto-runs `--promote-all` first.)
+   Use `--promote-all` before `--list` when skill-only MCP repair left patches in `awaiting_agent`.
 
 ## Rules
 

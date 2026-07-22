@@ -20,7 +20,12 @@ Repair broken Playwright locators in `pages/*.py` safely and minimally. Use with
    - test_data
    - changed_flow
    - unknown
-3. If selector_break: **Playwright MCP** — `browser_navigate` (base_url from failure), `browser_snapshot`.
+3. If selector_break: **Playwright MCP** — reach the failure UI, then `browser_snapshot`:
+   - Prefer `artifacts.storage_state` from the failure JSON: MCP propose runner starts with
+     `--isolated --storage-state=<path>`, then navigate to `environment.page_url`.
+   - Fallback: `browser_set_storage_state` with that path, or replay successful `test_steps`
+     before the failing step (correct locators from `pages/*.py`), then snapshot.
+   - Do not only open `base_url` when `page_url` is a deeper authenticated page.
 4. Propose locators from the live page (not guesses).
 5. Write `artifacts/healing-queue/patches/P-<id>.json` with `architecture_updates` targeting **one property** in `pages/*.py`.
 6. Promote to review queue (same as CLI after `mcp_propose_runner`):

@@ -32,8 +32,9 @@ python -m healing.healing_review --list
 
 ### Cursor chat (agent)
 
-1. Run `python -m healing.healing_review --list` (auto-promotes complete `awaiting_agent` patches first).
-2. For **each** pending patch:
+1. Run `python -m healing.healing_review --promote-all` if any patches may still be `awaiting_agent`.
+2. Run `python -m healing.healing_review --list` (read-only table of `patch_ready` patches).
+3. For **each** pending patch:
    - Run `python -m healing.healing_review --show P-<id>` for the review card.
    - Present failure context, before → after, risk, and `validation_command` in plain language.
    - Use **AskQuestion** (or equivalent) with options:

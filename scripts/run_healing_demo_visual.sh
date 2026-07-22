@@ -13,4 +13,4 @@ if [[ -f .env ]]; then
   set +a
 fi
 
-exec pytest tests/test_healing_flow_demo.py --run-healing-demo -v "$@"
+exec pytest tests/test_orangehrm_healing.py --run-healing-demo -v "$@"

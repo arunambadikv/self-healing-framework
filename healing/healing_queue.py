@@ -12,7 +12,6 @@ from healing.paths import (
     QUEUE_APPLIED,
     QUEUE_INDEX,
     QUEUE_PATCHES,
-    QUEUE_PENDING,
     QUEUE_SKIPPED,
     ensure_queue_dirs,
 )
@@ -28,6 +27,8 @@ STATUSES = frozenset(
         "not_healable",
     }
 )
+
+OPEN_PATCH_STATUSES = frozenset({"pending_proposal", "awaiting_agent", "patch_ready"})
 
 
 def is_patch_complete(proposal: dict[str, Any]) -> bool:
@@ -92,10 +93,55 @@ def register_failure(
             "processed_at": None,
         }
     )
-    pending_link = QUEUE_PENDING / f"{failure_id}.json"
-    pending_link.write_text(
-        json.dumps({"failure_id": failure_id, "failure_json": str(json_path.resolve())}, indent=2),
-        encoding="utf-8",
+    _save_index(index)
+
+
+def find_open_patch_for_architecture_ref(
+    architecture_ref: str,
+    *,
+    exclude_failure_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Return an index entry with an open patch for the same architecture ref, if any."""
+    if not architecture_ref:
+        return None
+    index = _load_index()
+    for entry in index.get("entries", []):
+        if entry.get("status") not in OPEN_PATCH_STATUSES:
+            continue
+        failure_id = entry.get("failure_id")
+        if not failure_id or failure_id == exclude_failure_id:
+            continue
+        try:
+            failure = load_failure_payload(failure_id)
+        except FileNotFoundError:
+            continue
+        if failure.get("architecture_ref") == architecture_ref:
+            return entry
+    return None
+
+
+def link_failure_to_existing_patch(
+    failure_id: str,
+    existing: dict[str, Any],
+    *,
+    note: str,
+) -> None:
+    """Attach a new failure to an existing open patch instead of creating a duplicate stub."""
+    index = _load_index()
+    entry = _find_entry(index, failure_id=failure_id)
+    if entry is None:
+        raise KeyError(f"Unknown failure_id: {failure_id}")
+    entry["patch_id"] = existing.get("patch_id")
+    entry["status"] = existing.get("status", "pending_proposal")
+    entry["patch_json"] = existing.get("patch_json")
+    entry["patch_md"] = existing.get("patch_md")
+    entry["processed_at"] = _utc_now()
+    entry["notes"] = note
+    payload = load_failure_payload(failure_id)
+    payload["processed"] = True
+    payload["linked_patch_id"] = existing.get("patch_id")
+    (FAILURES_DIR / f"{failure_id}.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8"
     )
     _save_index(index)
 
@@ -134,9 +180,6 @@ def mark_failure_not_healable(failure_id: str, *, reason: str) -> None:
     entry["status"] = "not_healable"
     entry["notes"] = reason
     entry["processed_at"] = _utc_now()
-    pending = QUEUE_PENDING / f"{failure_id}.json"
-    if pending.exists():
-        pending.unlink()
     payload = load_failure_payload(failure_id)
     payload["processed"] = True
     payload["classification"] = payload.get("classification") or "unknown"
@@ -157,9 +200,6 @@ def mark_failure_proposed(failure_id: str, patch_id: str, *, patch_json: Path, p
     entry["patch_json"] = str(patch_json.resolve())
     entry["patch_md"] = str(patch_md.resolve())
     entry["processed_at"] = _utc_now()
-    pending = QUEUE_PENDING / f"{failure_id}.json"
-    if pending.exists():
-        pending.unlink()
     payload = load_failure_payload(failure_id)
     payload["processed"] = True
     (FAILURES_DIR / f"{failure_id}.json").write_text(

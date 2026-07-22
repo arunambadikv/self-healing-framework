@@ -56,6 +56,7 @@ def build_failure_payload(
     traceback_text: str,
     step_trace: StepTraceCollector | None,
     screenshot_path: str | None = None,
+    storage_state_path: str | None = None,
 ) -> dict[str, Any]:
     steps = step_trace.to_list() if step_trace else []
     failing_step = _infer_failing_step(steps)
@@ -64,6 +65,12 @@ def build_failure_payload(
         architecture_ref = (
             f"{failing_step.get('page_class')}.{failing_step.get('locator_id') or failing_step.get('method')}"
         )
+
+    artifacts: dict[str, Any] = {
+        "screenshot": screenshot_path,
+    }
+    if storage_state_path:
+        artifacts["storage_state"] = storage_state_path
 
     payload = {
         "schema_version": 1,
@@ -88,9 +95,7 @@ def build_failure_payload(
         "test_steps": steps,
         "failing_step": failing_step,
         "architecture_ref": architecture_ref,
-        "artifacts": {
-            "screenshot": screenshot_path,
-        },
+        "artifacts": artifacts,
     }
     payload["classification"] = classify_failure(payload)
     payload["healable"] = is_healable(payload)
@@ -143,6 +148,17 @@ def write_failure_markdown(payload: dict[str, Any]) -> str:
     hint = err.get("playwright_hint")
     if hint:
         lines.extend(["## Playwright hint", "", f"```\n{json.dumps(hint, indent=2)}\n```", ""])
+    artifacts = payload.get("artifacts") or {}
+    if artifacts.get("storage_state"):
+        lines.extend(
+            [
+                "## Session restore",
+                "",
+                f"- **storage_state:** `{artifacts['storage_state']}`",
+                "- MCP propose should load this state, then navigate to `page_url` before snapshot.",
+                "",
+            ]
+        )
     lines.append("## Status")
     lines.append("")
     lines.append("- `processed`: false — awaiting `/healing-propose` or `python -m healing.pom_propose`")
@@ -182,6 +198,7 @@ def capture_from_exception(
     exc: BaseException,
     step_trace: StepTraceCollector | None,
     screenshot_path: str | None = None,
+    storage_state_path: str | None = None,
     failure_id: str | None = None,
 ) -> tuple[str, Path, Path]:
     failure_id = failure_id or new_failure_id()
@@ -199,6 +216,7 @@ def capture_from_exception(
         ),
         step_trace=step_trace,
         screenshot_path=screenshot_path,
+        storage_state_path=storage_state_path,
     )
     paths = save_failure_report(payload)
     return failure_id, paths[0], paths[1]

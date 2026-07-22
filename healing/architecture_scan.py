@@ -85,8 +85,18 @@ def _infer_locator_deps(func: ast.FunctionDef) -> list[str]:
 
 def _scan_test_file(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
-    pages = sorted(set(re.findall(r"(DemoPage|BasePage)\s*\(", text)))
-    calls = sorted(set(re.findall(r"\bdemo\.([a-z_][a-z0-9_]*)\s*\(", text)))
+    pages = sorted(set(re.findall(r"(\w+Page)\s*\(", text)))
+    skip_fixtures = frozenset(
+        {"self", "page", "path", "re", "json", "pytest", "os", "sys", "print", "open"}
+    )
+    call_pairs = re.findall(r"\b([a-z][a-z0-9_]*)\.([a-z_][a-z0-9_]*)\s*\(", text)
+    calls = sorted(
+        {
+            f"{fixture}.{method}"
+            for fixture, method in call_pairs
+            if fixture not in skip_fixtures and not fixture.startswith("_")
+        }
+    )
     return {
         "file": str(path.as_posix()),
         "page_classes": pages,

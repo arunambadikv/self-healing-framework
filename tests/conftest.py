@@ -87,6 +87,7 @@ def pytest_runtest_makereport(item, call):
 
         failure_id = new_failure_id()
         screenshot_path = None
+        storage_state_path = None
         if page is not None:
             try:
                 failures_dir = Path("artifacts/failures")
@@ -94,6 +95,14 @@ def pytest_runtest_makereport(item, call):
                 shot = failures_dir / f"screenshot-{failure_id}.png"
                 page.screenshot(path=str(shot))
                 screenshot_path = str(shot.resolve())
+            except Exception:
+                pass
+            try:
+                failures_dir = Path("artifacts/failures")
+                failures_dir.mkdir(parents=True, exist_ok=True)
+                state_file = failures_dir / f"storage-state-{failure_id}.json"
+                page.context.storage_state(path=str(state_file))
+                storage_state_path = str(state_file.resolve())
             except Exception:
                 pass
 
@@ -106,6 +115,7 @@ def pytest_runtest_makereport(item, call):
             exc=exc,
             step_trace=collector,
             screenshot_path=screenshot_path,
+            storage_state_path=storage_state_path,
             failure_id=failure_id,
         )
         print(
@@ -136,7 +146,7 @@ def pytest_addoption(parser):
 def pytest_collection_modifyitems(config, items):
     if not config.getoption("--run-demo-session"):
         skip_demo = pytest.mark.skip(
-            reason="Team demo only: pytest --run-demo-session tests/test_demo_total_failure.py"
+            reason="Deprecated: use pytest --run-healing-demo tests/test_orangehrm_healing.py"
         )
         for item in items:
             if "demo_session" in item.keywords:

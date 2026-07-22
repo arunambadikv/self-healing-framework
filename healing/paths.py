@@ -12,7 +12,6 @@ MANIFEST_MD = ARCHITECTURE_DIR / "manifest.md"
 FAILURES_DIR = ARTIFACTS / "failures"
 HEALING_QUEUE_DIR = ARTIFACTS / "healing-queue"
 QUEUE_INDEX = HEALING_QUEUE_DIR / "index.json"
-QUEUE_PENDING = HEALING_QUEUE_DIR / "pending"
 QUEUE_PATCHES = HEALING_QUEUE_DIR / "patches"
 QUEUE_APPLIED = HEALING_QUEUE_DIR / "applied"
 QUEUE_SKIPPED = HEALING_QUEUE_DIR / "skipped"
@@ -24,7 +23,6 @@ def ensure_queue_dirs() -> None:
         ARCHITECTURE_DIR,
         FAILURES_DIR,
         HEALING_QUEUE_DIR,
-        QUEUE_PENDING,
         QUEUE_PATCHES,
         QUEUE_APPLIED,
         QUEUE_SKIPPED,

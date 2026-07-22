@@ -19,10 +19,19 @@ def test_build_manifest_includes_demo_page(tmp_path: Path, monkeypatch):
     workspace = Path(__file__).resolve().parents[1]
     manifest = build_manifest(workspace)
     assert "DemoPage" in manifest.get("pages", {})
+    assert "OrangeHrmLoginPage" in manifest.get("pages", {})
     assert manifest.get("content_hash")
     session_link = manifest["pages"]["DemoPage"]["locators"]["session_github_link"]["expression"]
     assert '"SeleniumBase on GitHub"' in session_link
     assert "'SeleniumBase on GitHub'" not in session_link
+    orangehrm_tests = [
+        t for t in manifest.get("tests", []) if str(t.get("file", "")).endswith("test_orangehrm_healing.py")
+    ]
+    assert orangehrm_tests
+    assert any(
+        call.startswith("orangehrm_login.")
+        for call in orangehrm_tests[0].get("page_method_calls", [])
+    )
 
 
 def test_extract_property_return_expression_preserves_source_quotes():
@@ -347,3 +356,157 @@ def test_build_agent_prompt_uses_workspace_relative_patch_path(tmp_path: Path, m
     )
 
     assert "artifacts/healing-queue/patches/P-test123.json" in prompt
+
+
+def test_pom_propose_links_duplicate_architecture_ref(tmp_path: Path, monkeypatch):
+    from healing.architecture_scan import build_manifest, write_manifest
+    from healing.healing_queue import (
+        find_open_patch_for_architecture_ref,
+        list_unprocessed_failures,
+        register_failure,
+    )
+    from healing.paths import FAILURES_DIR, ensure_queue_dirs
+    from healing.pom_propose import process_failure_entry
+
+    monkeypatch.chdir(tmp_path)
+    ensure_queue_dirs()
+    pages_dir = tmp_path / "pages"
+    pages_dir.mkdir()
+    (pages_dir / "orangehrm_login_page.py").write_text(
+        '''from playwright.sync_api import Locator
+
+class OrangeHrmLoginPage:
+    @property
+    def healing_demo_login_button(self) -> Locator:
+        return self.page.get_by_role("button", name="Sign In")
+''',
+        encoding="utf-8",
+    )
+    write_manifest(build_manifest(tmp_path), tmp_path)
+
+    arch_ref = "OrangeHrmLoginPage.healing_demo_login_button"
+
+    def _write_failure(failure_id: str) -> None:
+        payload = {
+            "failure_id": failure_id,
+            "processed": False,
+            "healable": True,
+            "classification": "selector_break",
+            "architecture_ref": arch_ref,
+            "failing_step": {
+                "page_class": "OrangeHrmLoginPage",
+                "method": "click_healing_demo_login",
+                "action": "click",
+                "locator_id": "healing_demo_login_button",
+            },
+            "environment": {"base_url": "https://example.com/login"},
+            "test": {"file": "tests/test_orangehrm_healing.py", "nodeid": f"tests/t.py::t[{failure_id}]"},
+            "error": {"type": "TimeoutError", "message": "timeout"},
+        }
+        json_path = FAILURES_DIR / f"{failure_id}.json"
+        md_path = FAILURES_DIR / f"{failure_id}.md"
+        json_path.write_text(json.dumps(payload), encoding="utf-8")
+        md_path.write_text("# failure", encoding="utf-8")
+        register_failure(failure_id, json_path=json_path, md_path=md_path)
+
+    _write_failure("F-first")
+    patch_id = process_failure_entry({"failure_id": "F-first"}, workspace=tmp_path)
+    assert patch_id
+    assert find_open_patch_for_architecture_ref(arch_ref) is not None
+
+    _write_failure("F-second")
+    second_patch = process_failure_entry({"failure_id": "F-second"}, workspace=tmp_path)
+    assert second_patch == patch_id
+    assert list_unprocessed_failures() == []
+
+
+def test_build_failure_payload_includes_storage_state():
+    from healing.failure_report import build_failure_payload
+    from healing.step_trace import StepTraceCollector
+
+    collector = StepTraceCollector(test_name="t", test_module="m")
+    payload = build_failure_payload(
+        failure_id="F-storagetest",
+        test_nodeid="tests/t.py::t",
+        test_file="tests/t.py",
+        test_name="t",
+        base_url="https://example.com/login",
+        page_url="https://example.com/dashboard",
+        exception_type="TimeoutError",
+        exception_message="timeout",
+        traceback_text="TimeoutError",
+        step_trace=collector,
+        screenshot_path="/tmp/shot.png",
+        storage_state_path="/tmp/storage-state-F-storagetest.json",
+    )
+    assert payload["artifacts"]["storage_state"] == "/tmp/storage-state-F-storagetest.json"
+    assert payload["environment"]["page_url"] == "https://example.com/dashboard"
+    md = __import__("healing.failure_report", fromlist=["write_failure_markdown"]).write_failure_markdown(
+        payload
+    )
+    assert "storage_state" in md
+
+
+def test_mcp_servers_include_isolated_storage_state(tmp_path: Path, monkeypatch):
+    from healing.mcp_propose_runner import (
+        _load_mcp_servers,
+        _with_storage_state_args,
+        resolve_storage_state_path,
+    )
+
+    state = tmp_path / "storage-state-F-x.json"
+    state.write_text("{}", encoding="utf-8")
+    args = _with_storage_state_args(["@playwright/mcp@latest"], state)
+    assert "--isolated" in args
+    assert any(a.startswith("--storage-state=") for a in args)
+
+    failure = {"artifacts": {"storage_state": str(state)}}
+    assert resolve_storage_state_path(failure, tmp_path) == state
+
+    # Avoid importing cursor_sdk StdioMcpServerConfig unless available
+    try:
+        import cursor_sdk  # noqa: F401
+    except ImportError:
+        return
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".cursor" / "mcp.json").write_text(
+        json.dumps({"mcpServers": {"playwright": {"command": "npx", "args": ["@playwright/mcp@latest"]}}}),
+        encoding="utf-8",
+    )
+    servers = _load_mcp_servers(tmp_path, storage_state=state)
+    playwright = servers["playwright"]
+    assert "--isolated" in playwright.args
+    assert any(str(a).startswith("--storage-state=") for a in playwright.args)
+
+
+def test_proposal_prompt_prefers_page_url_and_storage_state():
+    from healing.pom_propose import build_proposal_prompt
+
+    failure = {
+        "failure_id": "F-prompt1",
+        "architecture_ref": "OrangeHrmDashboardPage.healing_demo_pim_link",
+        "test": {"nodeid": "tests/t.py::t"},
+        "error": {"type": "TimeoutError", "message": "timeout"},
+        "environment": {
+            "base_url": "https://example.com/login",
+            "page_url": "https://example.com/dashboard",
+        },
+        "artifacts": {"storage_state": "artifacts/failures/storage-state-F-prompt1.json"},
+        "test_steps": [
+            {"index": 0, "page_class": "P", "method": "goto", "action": "navigate"},
+            {"index": 1, "page_class": "P", "method": "click_pim", "action": "click"},
+        ],
+        "failing_step": {"index": 1, "method": "click_pim"},
+    }
+    prompt = build_proposal_prompt(
+        failure,
+        manifest={},
+        base_url="https://example.com/login",
+        patch_id="P-1",
+    )
+    assert "https://example.com/dashboard" in prompt
+    assert "storage-state-F-prompt1.json" in prompt
+    assert "Session restore" in prompt
+

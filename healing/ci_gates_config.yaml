@@ -17,32 +17,17 @@ thresholds:
 architecture:
   require_manifest: true
 
-registry_lint:
-  enabled: false
-  fail_on_warnings: false
-
 test_policy:
   enabled: true
   raw_mode: error
   require_pom_usage: true
   allowlist:
     - tests/test_pom_healing_unit.py
+    - tests/test_healing_review_interactive.py
   forbidden_patterns:
     - 'page\.locator\('
     - 'page\.get_by_[a-z_]+\('
     - 'expect\(page\.'
 
-raw_learning:
-  enabled: false
-  mcp_bundles: false
-
 healing_mcp:
   auto_after_test: false
-
-mcp_repair:
-  default_base_url: "https://seleniumbase.io/demo_page"
-  output_dir: "artifacts/mcp-repair-bundles"
-
-pom_healing:
-  failures_dir: "artifacts/failures"
-  queue_dir: "artifacts/healing-queue"

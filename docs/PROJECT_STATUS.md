@@ -6,7 +6,9 @@
 
 ## Summary
 
-Playwright Python POM healing framework on the SeleniumBase demo page. Tests use a single page object (`DemoPage`); locator failures are captured automatically, classified, queued, and repaired through a propose → MCP verify → human review → apply pipeline. **Human review is required** before any change lands in `pages/*.py`.
+Playwright Python POM healing framework. Tests use page-object fixtures; locator failures are captured automatically, classified, queued, and repaired through propose → MCP verify → human review → apply. **Human review is required** before any change lands in `pages/*.py`.
+
+**Target app:** configurable via `HEALING_BASE_URL` (default: OrangeHRM demo login). Opt-in healing demos in `tests/test_orangehrm_healing.py`.
 
 **Current focus:** `dev` has the MCP propose runner and failure-gated `HEALING_MCP_AUTO` chain; merge to `main` via PR when CI is green.
 
@@ -16,7 +18,7 @@ Playwright Python POM healing framework on the SeleniumBase demo page. Tests use
 
 | Phase | Status | Module / artifact |
 |-------|--------|-------------------|
-| POM tests + `demo` fixture | Done | `pages/`, `tests/conftest.py` |
+| POM tests + page fixtures | Done | `pages/`, `tests/conftest.py` |
 | Step trace on page actions | Done | `healing/step_trace.py`, `pages/base_page.py` |
 | Failure capture (F-*) | Done | `healing/failure_report.py`, `tests/conftest.py` |
 | Failure classification | Done | `healing/failure_classifier.py` |
@@ -26,7 +28,7 @@ Playwright Python POM healing framework on the SeleniumBase demo page. Tests use
 | Post-test auto chain (opt-in) | Done | `healing/post_test.py`, `healing/session_state.py` |
 | Human review + apply | Done | `healing/healing_review.py`, `healing/pom_apply.py` |
 | CI: test → propose-on-failure → gates | Done | `.github/workflows/healing-ci.yml` |
-| Healing flow demo tests | Done | `tests/test_healing_flow_demo.py`, `docs/HEALING_DEMO.md` |
+| Healing flow demo tests | Done | `tests/test_orangehrm_healing.py`, `docs/HEALING_DEMO.md` |
 | Auto-apply without review | Out of scope | By design |
 | Legacy SmartPage / registry | Retired | `legacy/` (reference only) |
 
@@ -38,7 +40,7 @@ Playwright Python POM healing framework on the SeleniumBase demo page. Tests use
 
 ```text
 pages/                 # Locators (@property) + methods — single source of truth
-tests/                 # Tests via `demo` fixture only (CI policy enforced)
+tests/                 # Tests via page-object fixtures (CI policy enforced)
 healing/               # Capture, queue, propose, review, apply, CI gates
 .cursor/skills/        # Slash-command operator skills
 artifacts/             # Generated (gitignored): failures, queue, architecture, reports
@@ -47,25 +49,23 @@ docs/                  # Runbooks and this status file
 
 ### Page objects
 
-| Class | File | Locator properties | Public methods | Notes |
-|-------|------|-------------------:|---------------:|-------|
-| `BasePage` | `pages/base_page.py` | — | `goto`, `_click_locator`, `_expect_visible`, … | Step tracing, shared actions |
-| `DemoPage` | `pages/demo_page.py` | 30 | 57 | Demo app coverage + 2 intentional healing-demo locators |
+| Class | File | Notes |
+|-------|------|-------|
+| `BasePage` | `pages/base_page.py` | Step tracing, shared actions |
+| `OrangeHrmLoginPage` | `pages/orangehrm_login_page.py` | Login + healing demo locator |
+| `OrangeHrmDashboardPage` | `pages/orangehrm_dashboard_page.py` | Post-login healing demo |
+| `DemoPage` | `pages/demo_page.py` | Legacy reference / unit tests |
 
 **Machine-readable detail:** run `python -m healing.architecture_scan` → [`artifacts/architecture/manifest.json`](../artifacts/architecture/manifest.json) and [`manifest.md`](../artifacts/architecture/manifest.md) (generated; not in git).
 
 ### Test suite
 
-| Group | Files | Tests (collected) | CI default |
-|-------|-------|------------------:|------------|
-| Demo coverage | `tests/test_demo_*.py` (8 files) | 10 | Runs |
-| Raw Playwright policy test | `tests/test_demo_raw_playwright.py` | 1 | Runs (expect CI policy gate) |
-| Healing pipeline demo | `tests/test_healing_flow_demo.py` | 2 | Skipped (`--run-healing-demo`) |
-| Deprecated demo session | `tests/test_demo_total_failure.py` | 1 | Skipped (`--run-demo-session`) |
-| Unit / integration | `tests/test_pom_healing_unit.py` | 9 | Runs |
-| **Total** | 11 files | **21** | **18** in normal `pytest tests/` |
+| Group | Files | CI default |
+|-------|-------|------------|
+| Healing pipeline demo | `tests/test_orangehrm_healing.py` | Skipped (`--run-healing-demo`) |
+| Unit / integration | `tests/test_pom_healing_unit.py`, `tests/test_healing_review_interactive.py` | Runs |
 
-**Target app:** [SeleniumBase demo page](https://seleniumbase.io/demo_page) (`HEALING_BASE_URL` override supported).
+**Target app:** `HEALING_BASE_URL` (default OrangeHRM demo login).
 
 ### Healing pipeline modules
 
