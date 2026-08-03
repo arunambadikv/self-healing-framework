@@ -24,8 +24,7 @@ healing-init                 # config, artifacts, skills, .cursor/mcp.json, .env
 cp .env.example .env         # set CURSOR_API_KEY=... for automated MCP propose only
 healing-doctor               # re-check anytime; add --verify-mcp to probe npx Playwright MCP
 pytest tests/ -v
-# optional auto propose after healable failures:
-# HEALING_MCP_AUTO=1 pytest tests/ -v
+# optional auto propose: set HEALING_MCP_AUTO=1 in .env (loaded automatically)
 ```
 
 `healing-init` writes `healer-artifacts/healing.toml`, artifact dirs, Cursor skills into `.cursor/skills/`, a Playwright MCP stub, and `.env.example`. Skills also ship inside the package when `.cursor/skills/` is absent. Pytest loads the plugin via the `pytest11` entry point.
@@ -68,7 +67,7 @@ pytest tests/ -v
 python -m healing.architecture_scan
 python -m healing.pom_propose --process-all
 python -m healing.mcp_propose_runner --process-all   # needs CURSOR_API_KEY + venv
-# or opt-in auto chain after healable locator failures: HEALING_MCP_AUTO=1 pytest tests/ -v
+# or opt-in auto chain: set HEALING_MCP_AUTO=1 in .env, then pytest tests/ -v
 
 python -m healing.healing_review --list
 python -m healing.healing_review --patch P-<id> --decision heal

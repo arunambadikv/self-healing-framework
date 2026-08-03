@@ -28,6 +28,7 @@ DEFAULT_ENV_EXAMPLE = """\
 CURSOR_API_KEY=
 
 # Opt-in: after healable locator failures, auto-run scan → stub → MCP propose
+# (read from .env automatically — no need to export every time)
 # HEALING_MCP_AUTO=1
 """
 
@@ -186,7 +187,7 @@ def main() -> int:
     print("  1. playwright install chromium")
     print("  2. cp .env.example .env  # set CURSOR_API_KEY for MCP propose")
     print("  3. pytest tests/ -v")
-    print("  4. optional: HEALING_MCP_AUTO=1 pytest tests/ -v")
+    print("  4. optional: set HEALING_MCP_AUTO=1 in .env, then pytest tests/ -v")
     print("  healing-doctor          # re-check setup anytime")
     print("  Full guide: docs/CONSUMER_SETUP.md (in the healing package repo)")
     scan = result.get("scan")

@@ -212,6 +212,38 @@ def test_failure_classifier_goto_timeout_not_selector_break():
     assert not is_healable(payload)
 
 
+def test_infer_architecture_from_consumer_traceback():
+    from healing.failure_report import build_failure_payload, infer_architecture_from_traceback
+
+    tb = '''File "/home/arun/healing-consumer-demo/pages/practice_page.py", line 19, in open_test_table_wrong
+    self.page.locator(self.WRONG_TABLE_LINK).click()
+playwright._impl._errors.TimeoutError: Locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator("#test-table-link")
+'''
+    inferred = infer_architecture_from_traceback(tb)
+    assert inferred is not None
+    assert inferred["architecture_ref"] == "PracticePage.open_test_table_wrong"
+    assert inferred["locator_id"] == "open_test_table_wrong"
+
+    payload = build_failure_payload(
+        failure_id="F-test",
+        test_nodeid="tests/test_practice.py::test_x",
+        test_file="tests/test_practice.py",
+        test_name="test_x",
+        base_url="https://example.com",
+        page_url="https://example.com/practice/",
+        exception_type="TimeoutError",
+        exception_message='Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator("#test-table-link")\n',
+        traceback_text=tb,
+        step_trace=None,
+    )
+    assert payload["architecture_ref"] == "PracticePage.open_test_table_wrong"
+    assert payload["failing_step"]["locator_id"] == "open_test_table_wrong"
+    assert payload["classification"] == "selector_break"
+    assert payload["healable"] is True
+
+
 def test_failure_classifier_auth_failure_not_healable():
     payload = {
         "architecture_ref": "OrangeHrmDashboardPage.healing_demo_dashboard_heading",
@@ -390,6 +422,19 @@ def test_should_run_post_test_chain_gating(tmp_path: Path, monkeypatch):
 
     reset_session_state()
     assert not should_run_post_test_chain(tmp_path)
+
+
+def test_healing_mcp_auto_reads_from_dotenv(tmp_path: Path, monkeypatch):
+    from healing.post_test import is_auto_enabled
+    from healing.paths import configure_workspace, reset_workspace
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("HEALING_MCP_AUTO", raising=False)
+    (tmp_path / ".env").write_text("HEALING_MCP_AUTO=1\n", encoding="utf-8")
+    configure_workspace(tmp_path)
+    assert is_auto_enabled(tmp_path) is True
+    monkeypatch.delenv("HEALING_MCP_AUTO", raising=False)
+    reset_workspace()
 
 
 def test_auto_chain_mcp_runs_latest_session_patch(tmp_path: Path, monkeypatch, capsys):

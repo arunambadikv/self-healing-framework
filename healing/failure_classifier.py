@@ -85,6 +85,11 @@ def classify_failure(payload: dict[str, Any]) -> str:
         failing_step = payload.get("failing_step") or {}
         if failing_step.get("locator_id"):
             return "selector_break"
+        # architecture_ref present (e.g. LoginPage.click_submit) + locator timeout
+        if payload.get("architecture_ref") and (
+            "locator" in combined or "waiting for" in combined or has_locator_hint
+        ):
+            return "selector_break"
         if "timeout" in combined:
             return "timeout"
 

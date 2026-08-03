@@ -20,9 +20,12 @@ def _load_healing_config(workspace: Path) -> dict[str, Any]:
 
 
 def is_auto_enabled(workspace: Path | None = None) -> bool:
+    workspace = (workspace or Path.cwd()).resolve()
+    from healing.doctor import load_dotenv_files
+
+    load_dotenv_files(workspace)
     if os.environ.get("HEALING_MCP_AUTO", "").strip() in ("1", "true", "yes"):
         return True
-    workspace = workspace or Path.cwd()
     config = _load_healing_config(workspace)
     return bool(config.get("healing_mcp", {}).get("auto_after_test", False))
 

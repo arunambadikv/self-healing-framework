@@ -56,8 +56,9 @@ pytest tests/ -v
 Optional auto chain after healable locator failures:
 
 ```bash
-# in .env: HEALING_MCP_AUTO=1
-# and CURSOR_API_KEY set
+# in .env (loaded automatically — no export needed):
+# HEALING_MCP_AUTO=1
+# CURSOR_API_KEY=cursor_...
 pytest tests/ -v
 ```
 
@@ -141,7 +142,7 @@ Installed with the package (`pip install healing` / `healing[mcp]`):
 | Architecture scan | `healing-scan` | pip |
 | Stub propose | `healing-propose --process-all` | pip |
 | MCP propose | `healing-mcp-propose --process-all` | `CURSOR_API_KEY`, Node/`npx`, `healing[mcp]` |
-| Auto chain | `HEALING_MCP_AUTO=1 pytest` | same as MCP propose |
+| Auto chain | `HEALING_MCP_AUTO=1` in `.env`, then `pytest` | same as MCP propose |
 | Human review / apply | `healing-review --interactive` | pip |
 | Interactive slash skills | Cursor `/healing-*` | skills + optional IDE MCP |
 
@@ -177,6 +178,8 @@ your-pom-project/
 ```
 
 Do **not** create a top-level folder named `healing/` for runtime files — that can shadow the installed Python package. Use `healer-artifacts/`.
+
+Page objects may call `page.locator(...).click()` directly; failures are still marked healable when the traceback points at `pages/*.py`. Prefer `healing.base_page.BasePage` + `@property` locators when you can, for richer step traces.
 
 ---
 

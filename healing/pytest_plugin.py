@@ -33,9 +33,12 @@ def pytest_addoption(parser) -> None:
 
 
 def pytest_configure(config) -> None:
+    from healing.doctor import load_dotenv_files
     from healing.paths import configure_workspace
 
-    configure_workspace(Path(config.rootpath))
+    workspace = Path(config.rootpath)
+    configure_workspace(workspace)
+    load_dotenv_files(workspace)
 
 
 def pytest_sessionstart(session) -> None:
@@ -156,7 +159,7 @@ def pytest_runtest_makereport(item, call):
             f"\n[healing] failure captured: {failure_id}\n"
             f"  json={json_path}\n  md={md_path}\n"
             f"  next: python -m healing.pom_propose --failure-id {failure_id}\n"
-            f"  or: export HEALING_MCP_AUTO=1 to auto-run scan → stub → MCP at session end"
+            f"  or: set HEALING_MCP_AUTO=1 in .env (or export) to auto-run scan → stub → MCP at session end"
         )
     except Exception as hook_exc:
         print(f"\n[healing] failure capture error: {hook_exc}")

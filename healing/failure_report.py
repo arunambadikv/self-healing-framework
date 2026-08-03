@@ -36,12 +36,53 @@ def _parse_playwright_hint(exc_repr: str) -> dict[str, Any] | None:
         r"get_by_text\([^)]+\)",
         r"locator\([^)]+\)",
         r"get_by_placeholder\([^)]+\)",
+        r'waiting for locator\("([^"]+)"\)',
+        r"waiting for locator\('([^']+)'\)",
     ):
         match = re.search(pattern, exc_repr)
         if match:
             hint["expression"] = match.group(0)
+            if match.lastindex:
+                hint["selector"] = match.group(1)
             break
     return hint or None
+
+
+def _module_stem_to_page_class(stem: str) -> str:
+    return "".join(part.capitalize() for part in stem.split("_") if part)
+
+
+def infer_architecture_from_traceback(traceback_text: str) -> dict[str, Any] | None:
+    """Infer page method from pytest/Playwright traceback when step tracing is absent.
+
+    Consumer POMs often call ``page.locator(...).click()`` without BasePage
+    ``record_step``, so architecture_ref would otherwise be missing and the failure
+    would be classified not_healable (blocking HEALING_MCP_AUTO).
+    """
+    patterns = (
+        # pytest short TB: pages/login_page.py:18: in click_submit_wrong
+        r"pages[/\\]([A-Za-z_][\w]*)\.py:\d+:\s+in\s+([A-Za-z_][\w]*)",
+        # full TB: File ".../pages/practice_page.py", line 19, in open_test_table_wrong
+        r'File "[^"]*pages[/\\]([A-Za-z_][\w]*)\.py", line \d+, in ([A-Za-z_][\w]*)',
+    )
+    match = None
+    for pattern in patterns:
+        match = re.search(pattern, traceback_text)
+        if match:
+            break
+    if not match:
+        return None
+    stem, method = match.group(1), match.group(2)
+    if method in {"goto", "navigate", "<module>"}:
+        return None
+    page_class = _module_stem_to_page_class(stem)
+    return {
+        "page_class": page_class,
+        "method": method,
+        "locator_id": method,
+        "action": "interact",
+        "architecture_ref": f"{page_class}.{method}",
+    }
 
 
 def _infer_failing_step(steps: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -72,6 +113,23 @@ def build_failure_payload(
         architecture_ref = (
             f"{failing_step.get('page_class')}.{failing_step.get('locator_id') or failing_step.get('method')}"
         )
+
+    # Consumer pages that click locators without BasePage step tracing still need a ref.
+    if not architecture_ref:
+        inferred = infer_architecture_from_traceback(traceback_text)
+        if inferred:
+            architecture_ref = inferred["architecture_ref"]
+            failing_step = {
+                "index": 0,
+                "page_class": inferred["page_class"],
+                "method": inferred["method"],
+                "action": inferred["action"],
+                "locator_id": inferred["locator_id"],
+                "locator_summary": inferred["architecture_ref"],
+                "inferred": True,
+            }
+            if not steps:
+                steps = [failing_step]
 
     artifacts: dict[str, Any] = {
         "screenshot": screenshot_path,
