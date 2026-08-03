@@ -217,6 +217,9 @@ def main() -> int:
         print("Architecture manifest is up to date.")
         return 0
     json_path, md_path, changed = write_manifest(manifest, workspace)
+    from healing.auto_scan import write_package_version_stamp
+
+    write_package_version_stamp()
     if changed:
         print(f"Wrote {json_path} and {md_path}")
     else:

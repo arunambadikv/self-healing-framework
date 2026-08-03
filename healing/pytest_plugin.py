@@ -42,17 +42,16 @@ def pytest_configure(config) -> None:
 
 
 def pytest_sessionstart(session) -> None:
+    from healing.auto_scan import run_auto_architecture_discovery
     from healing.paths import configure_workspace
     from healing.session_state import reset_session_state
 
-    configure_workspace(Path(session.config.rootpath))
-    reset_session_state()
-    if not session.config.getoption("--healing-scan-architecture"):
-        return
     workspace = Path(session.config.rootpath)
-    from healing.post_test import run_architecture_scan_if_needed
-
-    run_architecture_scan_if_needed(workspace)
+    configure_workspace(workspace)
+    reset_session_state()
+    # After pip install/update (or stale pages), refresh architecture automatically.
+    force = bool(session.config.getoption("--healing-scan-architecture"))
+    run_auto_architecture_discovery(workspace, force=force)
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:

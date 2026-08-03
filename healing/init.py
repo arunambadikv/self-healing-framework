@@ -128,15 +128,16 @@ def init_workspace(
 
     pages = workspace / "pages"
     if scan and pages.exists() and any(pages.glob("*.py")):
-        from healing.architecture_scan import build_manifest, write_manifest
+        from healing.auto_scan import run_auto_architecture_discovery
 
-        manifest = build_manifest(workspace)
-        json_path, md_path, changed = write_manifest(manifest, workspace)
+        scan_result = run_auto_architecture_discovery(workspace, force=True, quiet=True)
         result["scan"] = {
-            "json": str(json_path),
-            "md": str(md_path),
-            "changed": changed,
-            "content_hash": manifest.get("content_hash"),
+            "json": scan_result.get("json"),
+            "md": scan_result.get("md"),
+            "changed": scan_result.get("changed"),
+            "content_hash": scan_result.get("content_hash"),
+            "reason": scan_result.get("reason"),
+            "package_version": scan_result.get("package_version"),
         }
     return result
 

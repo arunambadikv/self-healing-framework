@@ -437,6 +437,39 @@ def test_healing_mcp_auto_reads_from_dotenv(tmp_path: Path, monkeypatch):
     reset_workspace()
 
 
+def test_auto_architecture_discovery_on_package_stamp_change(tmp_path: Path, monkeypatch):
+    from healing.auto_scan import (
+        run_auto_architecture_discovery,
+        should_auto_architecture_discovery,
+        write_package_version_stamp,
+    )
+    from healing.paths import configure_workspace, reset_workspace
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "login_page.py").write_text("class LoginPage:\n    pass\n", encoding="utf-8")
+
+    should, reason = should_auto_architecture_discovery(tmp_path)
+    assert should is True
+    assert "install" in reason or "manifest" in reason or "updated" in reason
+
+    result = run_auto_architecture_discovery(tmp_path, quiet=True)
+    assert result["ran"] is True
+    assert (tmp_path / "healer-artifacts" / "architecture" / "manifest.json").exists()
+
+    should2, reason2 = should_auto_architecture_discovery(tmp_path)
+    assert should2 is False
+    assert "up to date" in reason2
+
+    write_package_version_stamp("0.0.0-old")
+    should3, reason3 = should_auto_architecture_discovery(tmp_path)
+    assert should3 is True
+    assert "updated" in reason3
+    reset_workspace()
+
+
 def test_auto_chain_mcp_runs_latest_session_patch(tmp_path: Path, monkeypatch, capsys):
     """Auto MCP runs newest session patches; ignores unrelated stale awaiting_agent."""
     from healing.post_test import run_mcp_propose_all

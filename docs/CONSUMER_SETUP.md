@@ -64,6 +64,16 @@ pytest tests/ -v
 
 ---
 
+## Architecture discovery (automatic)
+
+Architecture scan (`/architecture-discovery` / `healing-scan`) runs automatically when:
+
+1. You run **`healing-init`** (first install / bootstrap), or
+2. You **update** the `healing` package and then run **`pytest`** (version stamp under `healer-artifacts/architecture/`), or
+3. The manifest is **stale** vs `pages/` / `tests/` / `data/`
+
+Manual: `healing-scan` or `python -m healing.architecture_scan`.
+
 ## What `healing-init` creates
 
 | Path | Purpose |

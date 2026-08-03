@@ -12,12 +12,13 @@ Produce a one-time (refreshable) architecture manifest for the healing pipeline.
 
 ## Steps
 
-1. Run: `python -m healing.architecture_scan` (from repo root).
-2. Read outputs:
+1. Usually **automatic** after `healing-init` or on the next `pytest` following a package install/update (also when the manifest is stale vs `pages/` / `tests/` / `data/`).
+2. Manual refresh: `python -m healing.architecture_scan` or `healing-scan` (from project root).
+3. Read outputs:
    - `healer-artifacts/architecture/manifest.json` (machine)
    - `healer-artifacts/architecture/manifest.md` (human)
-3. If `content_hash` unchanged vs previous manifest, report **manifest up to date**.
-4. Otherwise summarize: page classes, locator properties, test → page method usage.
+4. If `content_hash` unchanged vs previous manifest, report **manifest up to date**.
+5. Otherwise summarize: page classes, locator properties, test → page method usage.
 
 ## Heartbeat mode (daily)
 

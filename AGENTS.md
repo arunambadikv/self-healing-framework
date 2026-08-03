@@ -18,7 +18,7 @@
 |-------|---------|
 | Bootstrap in a POM repo | `/healing-init` → `python -m healing.init` |
 | Check consumer setup | `healing-doctor` (`--verify-mcp` optional) |
-| Architecture scan | `/architecture-discovery` → `python -m healing.architecture_scan` |
+| Architecture scan | `/architecture-discovery` → `python -m healing.architecture_scan` (also auto on `healing-init` / pytest after package update) |
 | Propose patches | `/healing-propose` → `python -m healing.pom_propose --process-all` |
 | MCP propose (SDK) | `python -m healing.mcp_propose_runner --process-all` |
 | Human review | `/healing-review` → `python -m healing.healing_review --list` |

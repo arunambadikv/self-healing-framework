@@ -303,6 +303,10 @@ def format_report(results: list[CheckResult]) -> str:
     if any(r.name == "mcp.json" for r in results):
         lines.append("Note: Cursor Settings → MCP is only for interactive IDE use.")
         lines.append("      CLI mcp_propose_runner starts Playwright MCP via stdio on its own.")
+    lines.append(
+        "Note: architecture-discovery runs automatically on healing-init and on the next "
+        "pytest after a package install/update (or when the manifest is stale)."
+    )
     return "\n".join(lines)
 
 
