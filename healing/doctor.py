@@ -75,27 +75,69 @@ def _check_cursor_sdk() -> CheckResult:
         )
 
 
+def _playwright_browser_roots() -> list[Path]:
+    roots: list[Path] = []
+    env = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
+    if env and env != "0":
+        roots.append(Path(env))
+    home = Path.home()
+    roots.extend(
+        [
+            home / ".cache" / "ms-playwright",
+            home / "Library" / "Caches" / "ms-playwright",
+            Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright",
+        ]
+    )
+    # Dedupe while preserving order
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for root in roots:
+        if not root or root in seen:
+            continue
+        seen.add(root)
+        out.append(root)
+    return out
+
+
+def find_chromium_executable() -> Path | None:
+    """Locate an installed Chromium binary without starting a Playwright driver."""
+    patterns = (
+        "chromium-*/chrome-linux*/chrome",
+        "chromium_headless_shell-*/chrome-linux*/headless_shell",
+        "chromium-*/chrome-mac*/Chromium",
+        "chromium-*/chrome-mac*/Google Chrome for Testing",
+        "chromium-*/chrome-win*/chrome.exe",
+        "chromium-*/chrome-win*/chrome",
+    )
+    candidates: list[Path] = []
+    for root in _playwright_browser_roots():
+        if not root.is_dir():
+            continue
+        for pattern in patterns:
+            candidates.extend(p for p in root.glob(pattern) if p.is_file())
+    if not candidates:
+        return None
+    # Prefer newest revision directory name (chromium-NNNN)
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
 def _check_playwright_browsers() -> CheckResult:
     try:
-        from playwright.sync_api import sync_playwright
+        import playwright  # noqa: F401
     except ImportError:
         return CheckResult("playwright", "error", "playwright not installed")
-    try:
-        with sync_playwright() as p:
-            path = p.chromium.executable_path
-            if path and Path(path).exists():
-                return CheckResult("chromium", "ok", f"executable at {path}")
-            return CheckResult(
-                "chromium",
-                "warn",
-                "chromium executable missing — run: playwright install chromium",
-            )
-    except Exception as exc:
-        return CheckResult(
-            "chromium",
-            "warn",
-            f"could not resolve chromium ({exc}) — run: playwright install chromium",
-        )
+
+    # Avoid sync_playwright() here — starting the driver just to read executable_path
+    # often prints "Task was destroyed but it is pending" / TargetClosedError on exit.
+    path = find_chromium_executable()
+    if path is not None:
+        return CheckResult("chromium", "ok", f"executable at {path}")
+    return CheckResult(
+        "chromium",
+        "warn",
+        "chromium executable missing — run: playwright install chromium",
+    )
 
 
 def _check_npx() -> CheckResult:

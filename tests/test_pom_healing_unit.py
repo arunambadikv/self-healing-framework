@@ -805,3 +805,16 @@ def test_load_dotenv_files_sets_api_key(tmp_path: Path, monkeypatch):
     assert os.environ.get("CURSOR_API_KEY") == "cursor_test_key"
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
 
+
+def test_find_chromium_executable_scans_cache(tmp_path: Path, monkeypatch):
+    from healing.doctor import find_chromium_executable
+
+    root = tmp_path / "ms-playwright" / "chromium-9999" / "chrome-linux64"
+    root.mkdir(parents=True)
+    chrome = root / "chrome"
+    chrome.write_text("#!/bin/sh\n", encoding="utf-8")
+    chrome.chmod(0o755)
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "ms-playwright"))
+    found = find_chromium_executable()
+    assert found == chrome
+
