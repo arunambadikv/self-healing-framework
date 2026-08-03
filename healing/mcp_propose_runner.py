@@ -182,8 +182,10 @@ def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str 
     if not api_key:
         print(
             f"[error] {patch_id}: CURSOR_API_KEY required for MCP propose runner.\n"
-            "  Install: pip install cursor-sdk (in project venv)\n"
-            "  Export:  export CURSOR_API_KEY=cursor_..."
+            "  Capture/scan/stub/review/apply work without it.\n"
+            "  Install SDK: pip install 'healing[mcp]'\n"
+            "  Set key:      export CURSOR_API_KEY=cursor_...  (or put it in .env)\n"
+            "  Check:        healing-doctor"
         )
         return False
 
@@ -237,6 +239,10 @@ def main() -> int:
     args = parser.parse_args()
     workspace = args.workspace.resolve()
     ensure_queue_dirs()
+
+    from healing.doctor import load_dotenv_files
+
+    load_dotenv_files(workspace)
 
     if args.list:
         awaiting = list_awaiting_agent()

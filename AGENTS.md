@@ -17,6 +17,7 @@
 | Skill | Command |
 |-------|---------|
 | Bootstrap in a POM repo | `/healing-init` → `python -m healing.init` |
+| Check consumer setup | `healing-doctor` (`--verify-mcp` optional) |
 | Architecture scan | `/architecture-discovery` → `python -m healing.architecture_scan` |
 | Propose patches | `/healing-propose` → `python -m healing.pom_propose --process-all` |
 | MCP propose (SDK) | `python -m healing.mcp_propose_runner --process-all` |
@@ -27,28 +28,34 @@
 
 ## Use in another framework
 
+See **[docs/CONSUMER_SETUP.md](docs/CONSUMER_SETUP.md)** for full requirements, `healing-init` / `healing-doctor`, CLI reference, and troubleshooting.
+
 ```bash
 pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
-healing-init   # optional scaffolding; skills also resolve from the package
-export CURSOR_API_KEY=cursor_...   # only consumer secret needed for MCP propose
+playwright install chromium
+healing-init
+cp .env.example .env   # set CURSOR_API_KEY for MCP propose only
+healing-doctor
 ```
 
-Skills ship inside the package (`healing/templates/skills/`) and `healing-init` installs them into `.cursor/skills/`. Runtime config/artifacts live under `healer-artifacts/` so they do not collide with the importable `healing` package. See README § Installation for pytest plugin wiring.
+Skills ship inside the package (`healing/templates/skills/`) and `healing-init` installs them into `.cursor/skills/`. Runtime config/artifacts live under `healer-artifacts/` so they do not collide with the importable `healing` package. `.env` is auto-loaded for MCP propose. See README § Installation.
 
 ## Playwright MCP setup
 
 ```bash
-bash scripts/setup_mcp_agent.sh
+healing-doctor --verify-mcp
+# or: bash scripts/setup_mcp_agent.sh
 ```
 
-Connect Playwright MCP in Cursor (`.cursor/mcp.json`). Skills live in `.cursor/skills/`.
+- **CLI / CI propose:** `mcp_propose_runner` starts Playwright MCP via stdio from `.cursor/mcp.json` (or built-in defaults). No Cursor Settings click required.
+- **Interactive IDE:** connect Playwright MCP in Cursor from `.cursor/mcp.json` if using slash skills with live browser tools.
 
-For automated MCP propose, install deps in the project venv and set `CURSOR_API_KEY`:
+For automated MCP propose:
 
 ```bash
 source .venv/bin/activate
 pip install -r requirements.txt   # includes cursor-sdk
-export CURSOR_API_KEY=cursor_...
+# CURSOR_API_KEY in .env (loaded automatically)
 ```
 
 ## Failure → patch → apply workflow

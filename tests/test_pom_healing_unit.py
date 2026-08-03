@@ -766,9 +766,42 @@ def test_init_workspace_writes_healer_layout_and_skills(tmp_path: Path, monkeypa
     result = init_workspace(tmp_path, force=True, scan=True)
     assert result["healing_toml"] == "healer-artifacts/healing.toml"
     assert (tmp_path / "healer-artifacts" / "healing.toml").exists()
+    assert result.get("env_example") == ".env.example"
+    assert (tmp_path / ".env.example").exists()
+    assert "CURSOR_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert FAILURES_DIR.resolve() == (tmp_path / "healer-artifacts" / "failures").resolve()
     assert (tmp_path / ".cursor" / "skills" / "healing-init" / "SKILL.md").exists()
     assert (tmp_path / ".cursor" / "mcp.json").exists()
     assert (tmp_path / "healer-artifacts" / "architecture" / "manifest.json").exists()
     reset_workspace()
+
+
+def test_doctor_reports_ok_for_package_and_warns_without_api_key(tmp_path: Path, monkeypatch):
+    from healing.doctor import run_doctor
+    from healing.init import init_workspace
+    from healing.paths import reset_workspace
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    init_workspace(tmp_path, force=True, scan=False)
+    results = run_doctor(tmp_path, verify_mcp=False)
+    by_name = {r.name: r for r in results}
+    assert by_name["healing package"].status == "ok"
+    assert by_name["CURSOR_API_KEY"].status == "warn"
+    assert by_name["mcp.json"].status == "ok"
+    assert by_name["healing.toml"].status == "ok"
+    reset_workspace()
+
+
+def test_load_dotenv_files_sets_api_key(tmp_path: Path, monkeypatch):
+    from healing.doctor import load_dotenv_files
+
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    (tmp_path / ".env").write_text("CURSOR_API_KEY=cursor_test_key\n", encoding="utf-8")
+    loaded = load_dotenv_files(tmp_path)
+    assert loaded
+    import os
+
+    assert os.environ.get("CURSOR_API_KEY") == "cursor_test_key"
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
 

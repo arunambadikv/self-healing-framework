@@ -4,10 +4,39 @@ Page Object Model tests (`pages/*.py`) with **fail-fast** execution and a **post
 
 **Demo app:** [SeleniumBase demo page](https://seleniumbase.io/demo_page)
 
+**Consumer setup (install, init, doctor, requirements):** [docs/CONSUMER_SETUP.md](docs/CONSUMER_SETUP.md)  
 **Operator guide:** [AGENTS.md](AGENTS.md)  
 **Project status:** [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)
 
 ## Installation
+
+Full consumer steps, CLI reference, and troubleshooting: **[docs/CONSUMER_SETUP.md](docs/CONSUMER_SETUP.md)**.
+
+### Consumer happy path (another Playwright POM repo)
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+# or local: pip install -e "/path/to/self-healing-framework[mcp]"
+playwright install chromium
+cd /path/to/your-pom-project
+healing-init                 # config, artifacts, skills, .cursor/mcp.json, .env.example + doctor
+cp .env.example .env         # set CURSOR_API_KEY=... for automated MCP propose only
+healing-doctor               # re-check anytime; add --verify-mcp to probe npx Playwright MCP
+pytest tests/ -v
+# optional auto propose after healable failures:
+# HEALING_MCP_AUTO=1 pytest tests/ -v
+```
+
+`healing-init` writes `healer-artifacts/healing.toml`, artifact dirs, Cursor skills into `.cursor/skills/`, a Playwright MCP stub, and `.env.example`. Skills also ship inside the package when `.cursor/skills/` is absent. Pytest loads the plugin via the `pytest11` entry point.
+
+**What needs a secret / MCP**
+
+| Capability | Needs |
+|------------|--------|
+| Capture, scan, stub propose, review, apply | Nothing beyond pip + chromium |
+| Automated MCP propose (`mcp_propose_runner` / `HEALING_MCP_AUTO`) | `CURSOR_API_KEY` in `.env`, Node/`npx`, `healing[mcp]` |
+| Interactive Cursor slash repair | Enable Playwright MCP from `.cursor/mcp.json` in Cursor Settings (IDE only — CLI propose starts MCP via stdio itself) |
 
 ### This reference repo
 
@@ -18,20 +47,8 @@ pip install -e ".[mcp]"
 # or: pip install -r requirements.txt
 playwright install chromium
 python -m healing.architecture_scan
+healing-doctor
 ```
-
-### Use in your Playwright POM framework
-
-```bash
-pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
-# or editable from a local checkout: pip install -e "/path/to/self-healing-framework[mcp]"
-cd /path/to/your-pom-project
-healing-init   # or: python -m healing.init   / Cursor: /healing-init
-```
-
-`healing-init` writes `healer-artifacts/healing.toml`, `healer-artifacts/` dirs, Cursor skills into `.cursor/skills/`, and a Playwright MCP stub. Operator skills also ship **inside the package** (`healing/templates/skills/`) and are used automatically when `.cursor/skills/` is absent — the only consumer-side secret required for MCP propose is `CURSOR_API_KEY`. Pytest loads the plugin via the `pytest11` entry point on install.
-
-For automated MCP propose, set `CURSOR_API_KEY` in `.env` (see `.env.example`). The `cursor-sdk` package is included via the `mcp` extra / `requirements.txt`.
 
 ## Quick start
 

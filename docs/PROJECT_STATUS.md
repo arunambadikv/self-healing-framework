@@ -29,6 +29,7 @@ Playwright Python POM healing framework, now **installable** (`pip install -e ".
 | Post-test auto chain (opt-in) | Done | `healing/post_test.py`, `healing/session_state.py` |
 | Human review + apply | Done | `healing/healing_review.py` (`--yes`, screenshots, deferred) |
 | Installable package + init | Done | `pyproject.toml`, `healing/init.py`, `/healing-init` |
+| Consumer setup guide + doctor | Done | [docs/CONSUMER_SETUP.md](CONSUMER_SETUP.md), `healing-doctor` |
 | CI: test → propose-on-failure → gates | Done | `.github/workflows/healing-ci.yml` (incl. `dev`) |
 | Remote pipeline E2E | Done | `.github/workflows/healing-pipeline-e2e.yml` |
 | Healing flow demo tests | Done | OrangeHRM + SauceDemo (+ inventory auth) |
@@ -83,6 +84,7 @@ docs/                  # Runbooks and this status file
 | `failure_report.py` | Build and save `F-{test}-{stamp}.json` / `.md` on pytest failure |
 | `failure_classifier.py` | `selector_break`, `auth_failure`, `network`, `app_regression`, … |
 | `init.py` | `healing-init` bootstrap for consumer frameworks |
+| `doctor.py` | `healing-doctor` consumer setup checks (+ optional `--verify-mcp`) |
 | `config.py` / `paths.py` | Workspace-aware layout + `healer-artifacts/healing.toml` / `[tool.healing]` |
 | `healing_queue.py` | Queue index, status machine, `index.json` |
 | `architecture_scan.py` | AST scan of `pages/`, `tests/`, `data/` |

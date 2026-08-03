@@ -83,10 +83,12 @@ def run_pom_propose_all(workspace: Path) -> int:
 
 def run_mcp_propose_all(workspace: Path) -> int:
     """Complete the latest session patch(es) via MCP (newest first; one per architecture_ref)."""
+    from healing.doctor import load_dotenv_files
     from healing.healing_queue import select_latest_awaiting_patches
     from healing.mcp_propose_runner import process_patch_entry
     from healing.session_state import session_new_patch_ids
 
+    load_dotenv_files(workspace)
     api_key = os.environ.get("CURSOR_API_KEY", "").strip() or None
     session_patches = session_new_patch_ids()
     if not session_patches:

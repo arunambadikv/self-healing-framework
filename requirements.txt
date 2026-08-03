@@ -3,4 +3,5 @@ pytest
 pytest-playwright
 pyyaml
 rich
+python-dotenv
 cursor-sdk

@@ -20,6 +20,17 @@ mcp_config = ".cursor/mcp.json"
 auth_dir = "healer-artifacts/auth"
 """
 
+DEFAULT_ENV_EXAMPLE = """\
+# Consumer secrets / toggles (copy to .env — never commit .env)
+# Only CURSOR_API_KEY is required for automated MCP propose.
+# Failure capture, architecture scan, stub propose, review, and apply work without it.
+
+CURSOR_API_KEY=
+
+# Opt-in: after healable locator failures, auto-run scan → stub → MCP propose
+# HEALING_MCP_AUTO=1
+"""
+
 SKILL_NAMES = BUNDLED_SKILLS
 
 
@@ -82,7 +93,24 @@ def _write_healing_toml(workspace: Path, *, force: bool = False) -> str | None:
     return str(dest.relative_to(workspace))
 
 
-def init_workspace(workspace: Path, *, force: bool = False, scan: bool = True) -> dict[str, object]:
+def _write_env_example(workspace: Path, *, force: bool = False) -> str | None:
+    dest = workspace / ".env.example"
+    if dest.exists() and not force:
+        return None
+    src = _templates_root() / "env.example"
+    if src.exists():
+        shutil.copy2(src, dest)
+    else:
+        dest.write_text(DEFAULT_ENV_EXAMPLE, encoding="utf-8")
+    return str(dest.relative_to(workspace))
+
+
+def init_workspace(
+    workspace: Path,
+    *,
+    force: bool = False,
+    scan: bool = True,
+) -> dict[str, object]:
     from healing.paths import configure_workspace, ensure_queue_dirs
 
     workspace = configure_workspace(workspace.resolve())
@@ -92,6 +120,7 @@ def init_workspace(workspace: Path, *, force: bool = False, scan: bool = True) -
         "workspace": str(workspace),
         "healing_toml": _write_healing_toml(workspace, force=force),
         "mcp": _write_mcp_stub(workspace, force=force),
+        "env_example": _write_env_example(workspace, force=force),
         "skills": _copy_skill_templates(workspace, force=force),
         "scan": None,
     }
@@ -118,6 +147,16 @@ def main() -> int:
     parser.add_argument("--workspace", default=".", type=Path)
     parser.add_argument("--force", action="store_true", help="Overwrite existing skill/config files.")
     parser.add_argument("--no-scan", action="store_true", help="Skip initial architecture_scan.")
+    parser.add_argument(
+        "--no-check",
+        action="store_true",
+        help="Skip healing-doctor after init.",
+    )
+    parser.add_argument(
+        "--verify-mcp",
+        action="store_true",
+        help="With doctor: also run npx @playwright/mcp@latest --help.",
+    )
     args = parser.parse_args()
 
     result = init_workspace(args.workspace, force=args.force, scan=not args.no_scan)
@@ -130,6 +169,10 @@ def main() -> int:
         print(f"  wrote {result['mcp']}")
     else:
         print("  .cursor/mcp.json already present")
+    if result.get("env_example"):
+        print(f"  wrote {result['env_example']} (copy to .env and set CURSOR_API_KEY for MCP propose)")
+    else:
+        print("  .env.example already present")
     skills = result["skills"] or []
     if skills:
         print(f"  wrote {len(skills)} skill(s):")
@@ -139,14 +182,27 @@ def main() -> int:
         print("  skills already present (use --force to refresh)")
     print("  healer-artifacts/ directories ensured")
     print()
-    print("Pytest: ensure plugin is loaded (entry point or addopts = -p healing.pytest_plugin)")
-    print("Install (editable): pip install -e '.[mcp]'")
-    print("Install (git):      pip install 'healing @ git+https://github.com/arunambadikv/self-healing-framework.git'")
+    print("Happy path:")
+    print("  1. playwright install chromium")
+    print("  2. cp .env.example .env  # set CURSOR_API_KEY for MCP propose")
+    print("  3. pytest tests/ -v")
+    print("  4. optional: HEALING_MCP_AUTO=1 pytest tests/ -v")
+    print("  healing-doctor          # re-check setup anytime")
+    print("  Full guide: docs/CONSUMER_SETUP.md (in the healing package repo)")
     scan = result.get("scan")
     if isinstance(scan, dict):
         print(f"  architecture scan: hash={scan.get('content_hash')} changed={scan.get('changed')}")
     elif not args.no_scan:
         print("  architecture scan skipped (no pages/*.py yet)")
+
+    if not args.no_check:
+        print()
+        from healing.doctor import format_report, run_doctor
+
+        results = run_doctor(Path(str(result["workspace"])), verify_mcp=args.verify_mcp)
+        print(format_report(results))
+        if any(r.status == "error" for r in results):
+            return 1
     return 0
 
 
