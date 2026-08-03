@@ -26,6 +26,9 @@ class OrangeHrmDashboardPage(BasePage):
         """Healing demo: intentionally broken until MCP repair."""
         return self.page.get_by_role("link", name="Employee List")
 
+    def ready_locator(self) -> Locator:
+        return self.dashboard_heading
+
     def expect_dashboard_visible(self) -> None:
         self._expect_visible(
             "expect_dashboard_visible",

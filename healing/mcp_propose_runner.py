@@ -13,6 +13,7 @@ from healing.healing_queue import (
     is_patch_complete,
     list_awaiting_agent,
     load_failure_payload,
+    select_latest_awaiting_patches,
 )
 from healing.paths import QUEUE_PATCHES, ensure_queue_dirs
 from healing.skill_paths import load_skill_text
@@ -259,10 +260,19 @@ def main() -> int:
         return 0 if process_patch_entry(entry, workspace=workspace, api_key=api_key) else 1
 
     if args.process_all:
-        awaiting = list_awaiting_agent()
+        awaiting = select_latest_awaiting_patches()
+        all_awaiting = list_awaiting_agent()
+        skipped = len(all_awaiting) - len(awaiting)
         if not awaiting:
             print("No patches awaiting agent.")
             return 0
+        if skipped:
+            print(
+                f"[healing] Processing {len(awaiting)} latest patch(es) "
+                f"(skipped {skipped} older duplicate architecture_ref)"
+            )
+        else:
+            print(f"[healing] Processing {len(awaiting)} patch(es) newest-first")
         ok = 0
         for entry in awaiting:
             if process_patch_entry(entry, workspace=workspace, api_key=api_key):

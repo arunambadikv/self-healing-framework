@@ -40,7 +40,7 @@ def write_skip_rca(patch_id: str, payload: dict[str, Any], reason: str) -> Path:
         "- Verify whether the application UI changed vs test expectation.",
         "- Check environment URL and test data.",
         "- If locator is correct, file a product bug with failure artifact:",
-        f"  - `artifacts/failures/{failure_id}.md`",
+        f"  - `healer-artifacts/failures/{failure_id}.md`",
         "",
         "## Classification hints",
         "",
@@ -96,8 +96,9 @@ def decision_skip(patch_id: str, reason: str) -> int:
 
 
 def decision_defer(patch_id: str) -> int:
-    """Leave patch in patch_ready queue for a later review session."""
-    print(f"[ok] Deferred patch {patch_id} (still patch_ready — review again anytime)")
+    """Mark patch deferred so it leaves the patch_ready review queue."""
+    update_patch_status(patch_id, "deferred", notes="Deferred by reviewer")
+    print(f"[ok] Deferred patch {patch_id} (status → deferred; re-queue with --promote later if needed)")
     return 0
 
 
@@ -132,9 +133,11 @@ def decision_promote_all() -> int:
 
 
 def write_summary(workspace: Path) -> Path:
+    from healing.artifact_naming import utc_stamp
+
     ensure_queue_dirs()
     counts = get_index_summary()
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = utc_stamp()
     path = QUEUE_SUMMARIES / f"summary-{ts}.md"
     ready = list_patch_ready()
     lines = [
@@ -174,9 +177,17 @@ def main() -> int:
     parser.add_argument("--reason", default="User chose not to heal")
     parser.add_argument("--summary", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="Skip high-risk confirmation prompts (decision already confirmed in chat/UI).",
+    )
     parser.add_argument("--workspace", default=".", type=Path)
     args = parser.parse_args()
-    workspace = args.workspace.resolve()
+    from healing.paths import configure_workspace
+
+    workspace = configure_workspace(args.workspace.resolve())
     ensure_queue_dirs()
 
     no_action = not any(
@@ -193,12 +204,12 @@ def main() -> int:
     if no_action and sys.stdin.isatty():
         from healing.review_interactive import run_interactive_review
 
-        return run_interactive_review(workspace)
+        return run_interactive_review(workspace, auto_confirm=args.yes)
 
     if args.interactive:
         from healing.review_interactive import run_interactive_review
 
-        return run_interactive_review(workspace)
+        return run_interactive_review(workspace, auto_confirm=args.yes)
 
     if args.list:
         ready = list_patch_ready()
@@ -218,6 +229,15 @@ def main() -> int:
 
     if args.patch and args.decision:
         if args.decision == "heal":
+            if not args.yes and not args.dry_run:
+                payload = load_patch(args.patch, QUEUE_PATCHES)
+                proposal = payload.get("proposal") or payload
+                if (proposal.get("risk_level") or "").lower() == "high":
+                    print(
+                        "[error] High-risk patch requires confirmation. "
+                        "Re-run with --yes after the user confirms in chat."
+                    )
+                    return 1
             return decision_heal(args.patch, workspace=workspace, dry_run=args.dry_run)
         if args.decision == "skip":
             return decision_skip(args.patch, args.reason)

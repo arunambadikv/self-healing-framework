@@ -1,3 +1,7 @@
+"""Reference-app fixtures (page objects, demo browser settings, auth storage state)."""
+
+from __future__ import annotations
+
 import os
 from pathlib import Path
 
@@ -5,8 +9,35 @@ import pytest
 from playwright.sync_api import Page
 
 from pages.orangehrm_dashboard_page import ORANGEHRM_DASHBOARD_URL, OrangeHrmDashboardPage
-from pages.orangehrm_login_page import ORANGEHRM_LOGIN_URL, OrangeHrmLoginPage
-from healing.step_trace import StepTraceCollector, reset_step_trace, set_active_step_trace
+from pages.orangehrm_login_page import (
+    ORANGEHRM_LOGIN_URL,
+    ORANGEHRM_PASSWORD,
+    ORANGEHRM_USERNAME,
+    OrangeHrmLoginPage,
+)
+from pages.saucedemo_inventory_page import SAUCEDEMO_INVENTORY_URL, SauceDemoInventoryPage
+from pages.saucedemo_login_page import (
+    SAUCEDEMO_LOGIN_URL,
+    SAUCEDEMO_PASSWORD,
+    SAUCEDEMO_USERNAME,
+    SauceDemoLoginPage,
+)
+
+
+def _demo_headless() -> bool:
+    return os.environ.get("HEALING_DEMO_HEADLESS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _env_cred(user_key: str, password_key: str, default_user: str, default_password: str) -> tuple[str, str]:
+    return (
+        os.environ.get(user_key, default_user),
+        os.environ.get(password_key, default_password),
+    )
 
 
 @pytest.fixture(scope="session")
@@ -15,10 +46,22 @@ def base_url():
 
 
 @pytest.fixture(scope="session")
+def orangehrm_credentials() -> tuple[str, str]:
+    return _env_cred("ORANGEHRM_USER", "ORANGEHRM_PASSWORD", ORANGEHRM_USERNAME, ORANGEHRM_PASSWORD)
+
+
+@pytest.fixture(scope="session")
+def saucedemo_credentials() -> tuple[str, str]:
+    return _env_cred("SAUCEDEMO_USER", "SAUCEDEMO_PASSWORD", SAUCEDEMO_USERNAME, SAUCEDEMO_PASSWORD)
+
+
+@pytest.fixture(scope="session")
 def browser_type_launch_args(pytestconfig, browser_type_launch_args):
-    """Show the browser when running healing demos."""
+    """Show the browser when running healing demos (unless HEALING_DEMO_HEADLESS=1)."""
     if not pytestconfig.getoption("--run-healing-demo"):
         return browser_type_launch_args
+    if _demo_headless():
+        return {**browser_type_launch_args, "headless": True}
     slow_mo = int(os.environ.get("HEALING_DEMO_SLOW_MO", "400"))
     return {
         **browser_type_launch_args,
@@ -37,6 +80,20 @@ def browser_context_args(pytestconfig, browser_context_args):
     }
 
 
+@pytest.fixture(autouse=True)
+def _healing_demo_timeouts(request):
+    """Give public demo sites more time to load when running healing demos."""
+    if not request.config.getoption("--run-healing-demo"):
+        yield
+        return
+    from healing.timeouts import ACTION_TIMEOUT_MS, NAV_TIMEOUT_MS
+
+    context = request.getfixturevalue("context")
+    context.set_default_timeout(ACTION_TIMEOUT_MS)
+    context.set_default_navigation_timeout(NAV_TIMEOUT_MS)
+    yield
+
+
 @pytest.fixture
 def orangehrm_login(page: Page, base_url) -> OrangeHrmLoginPage:
     return OrangeHrmLoginPage(page, base_url)
@@ -47,115 +104,74 @@ def orangehrm_dashboard(page: Page) -> OrangeHrmDashboardPage:
     return OrangeHrmDashboardPage(page, ORANGEHRM_DASHBOARD_URL)
 
 
-@pytest.fixture(autouse=True)
-def _healing_step_trace(request):
-    module_stem = Path(str(request.node.fspath)).stem
-    collector = StepTraceCollector(
-        test_name=request.node.name,
-        test_module=module_stem,
-    )
-    token = set_active_step_trace(collector)
-    request.node._healing_step_trace = collector  # type: ignore[attr-defined]
-    yield
-    reset_step_trace(token)
+@pytest.fixture
+def saucedemo_login(page: Page) -> SauceDemoLoginPage:
+    return SauceDemoLoginPage(page, SAUCEDEMO_LOGIN_URL)
 
 
-@pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    outcome = yield
-    report = outcome.get_result()
-    if report.when != "call" or report.passed:
-        return
+@pytest.fixture
+def saucedemo_inventory(page: Page) -> SauceDemoInventoryPage:
+    return SauceDemoInventoryPage(page, SAUCEDEMO_INVENTORY_URL)
 
-    exc = call.excinfo.value if call.excinfo else None
-    if exc is None:
-        return
 
-    collector = getattr(item, "_healing_step_trace", None)
-    base_url = os.environ.get("HEALING_BASE_URL", ORANGEHRM_LOGIN_URL)
-    page_url = None
-    page = None
+@pytest.fixture(scope="session")
+def orangehrm_storage_state(browser, base_url, orangehrm_credentials) -> Path:
+    """Login once; save storage state for authenticated healing / MCP restore."""
+    from healing.paths import AUTH_DIR, ensure_queue_dirs
+
+    ensure_queue_dirs()
+    path = AUTH_DIR.resolve_path() / "storage-state-orangehrm.json"
+    context = browser.new_context()
+    page = context.new_page()
     try:
-        page = item.funcargs.get("page")
-        if page is not None:
-            page_url = page.url
-    except Exception:
-        pass
+        login = OrangeHrmLoginPage(page, base_url)
+        login.goto()
+        login.login(*orangehrm_credentials)
+        context.storage_state(path=str(path))
+    finally:
+        context.close()
+    return path
 
+
+@pytest.fixture(scope="session")
+def saucedemo_storage_state(browser, saucedemo_credentials) -> Path:
+    from healing.paths import AUTH_DIR, ensure_queue_dirs
+
+    ensure_queue_dirs()
+    path = AUTH_DIR.resolve_path() / "storage-state-saucedemo.json"
+    context = browser.new_context()
+    page = context.new_page()
     try:
-        from healing.failure_report import capture_from_exception, new_failure_id
-
-        failure_id = new_failure_id()
-        screenshot_path = None
-        storage_state_path = None
-        if page is not None:
-            try:
-                failures_dir = Path("artifacts/failures")
-                failures_dir.mkdir(parents=True, exist_ok=True)
-                shot = failures_dir / f"screenshot-{failure_id}.png"
-                page.screenshot(path=str(shot))
-                screenshot_path = str(shot.resolve())
-            except Exception:
-                pass
-            try:
-                failures_dir = Path("artifacts/failures")
-                failures_dir.mkdir(parents=True, exist_ok=True)
-                state_file = failures_dir / f"storage-state-{failure_id}.json"
-                page.context.storage_state(path=str(state_file))
-                storage_state_path = str(state_file.resolve())
-            except Exception:
-                pass
-
-        failure_id, json_path, md_path = capture_from_exception(
-            test_nodeid=item.nodeid,
-            test_file=str(item.fspath),
-            test_name=item.name,
-            base_url=base_url,
-            page_url=page_url,
-            exc=exc,
-            step_trace=collector,
-            screenshot_path=screenshot_path,
-            storage_state_path=storage_state_path,
-            failure_id=failure_id,
-        )
-        print(
-            f"\n[healing] failure captured: {failure_id}\n"
-            f"  json={json_path}\n  md={md_path}\n"
-            f"  next: python -m healing.pom_propose --failure-id {failure_id}\n"
-            f"  or: export HEALING_MCP_AUTO=1 to auto-run scan → stub → MCP at session end"
-        )
-    except Exception as hook_exc:
-        print(f"\n[healing] failure capture error: {hook_exc}")
+        login = SauceDemoLoginPage(page, SAUCEDEMO_LOGIN_URL)
+        login.goto()
+        login.login(*saucedemo_credentials)
+        context.storage_state(path=str(path))
+    finally:
+        context.close()
+    return path
 
 
-def pytest_addoption(parser):
-    parser.addoption(
-        "--run-demo-session",
-        action="store_true",
-        default=False,
-        help="Run tests marked demo_session.",
-    )
-    parser.addoption(
-        "--run-healing-demo",
-        action="store_true",
-        default=False,
-        help="Run tests marked healing_demo (opens visible browser with slow-mo).",
-    )
+@pytest.fixture
+def orangehrm_authenticated_page(browser, orangehrm_storage_state):
+    context = browser.new_context(storage_state=str(orangehrm_storage_state))
+    page = context.new_page()
+    yield page
+    context.close()
 
 
-def pytest_collection_modifyitems(config, items):
-    if not config.getoption("--run-demo-session"):
-        skip_demo = pytest.mark.skip(
-            reason="Deprecated: use pytest --run-healing-demo tests/test_orangehrm_healing.py"
-        )
-        for item in items:
-            if "demo_session" in item.keywords:
-                item.add_marker(skip_demo)
+@pytest.fixture
+def saucedemo_authenticated_page(browser, saucedemo_storage_state):
+    context = browser.new_context(storage_state=str(saucedemo_storage_state))
+    page = context.new_page()
+    yield page
+    context.close()
 
-    if not config.getoption("--run-healing-demo"):
-        skip_healing = pytest.mark.skip(
-            reason="Healing demo only: pytest --run-healing-demo tests/test_orangehrm_healing.py"
-        )
-        for item in items:
-            if "healing_demo" in item.keywords:
-                item.add_marker(skip_healing)
+
+@pytest.fixture
+def orangehrm_dashboard_authenticated(orangehrm_authenticated_page) -> OrangeHrmDashboardPage:
+    return OrangeHrmDashboardPage(orangehrm_authenticated_page, ORANGEHRM_DASHBOARD_URL)
+
+
+@pytest.fixture
+def saucedemo_inventory_authenticated(saucedemo_authenticated_page) -> SauceDemoInventoryPage:
+    return SauceDemoInventoryPage(saucedemo_authenticated_page, SAUCEDEMO_INVENTORY_URL)

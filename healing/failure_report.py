@@ -5,19 +5,26 @@ from __future__ import annotations
 import json
 import re
 import traceback
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from healing.artifact_naming import build_artifact_id
 from healing.paths import FAILURES_DIR, ensure_queue_dirs
 from healing.healing_queue import register_failure
 from healing.failure_classifier import classify_failure, is_healable
 from healing.step_trace import StepTraceCollector
 
 
-def new_failure_id() -> str:
-    return f"F-{uuid.uuid4().hex[:12]}"
+def new_failure_id(test_name: str | None = None) -> str:
+    """Readable id: F-{test-name}-{YYYYMMDD-HHMMSS} (with -2/-3 on collision)."""
+    ensure_queue_dirs()
+    return build_artifact_id(
+        "F",
+        test_name,
+        directory=Path(str(FAILURES_DIR)),
+        suffixes=(".json", ".md"),
+    )
 
 
 def _parse_playwright_hint(exc_repr: str) -> dict[str, Any] | None:
@@ -149,6 +156,16 @@ def write_failure_markdown(payload: dict[str, Any]) -> str:
     if hint:
         lines.extend(["## Playwright hint", "", f"```\n{json.dumps(hint, indent=2)}\n```", ""])
     artifacts = payload.get("artifacts") or {}
+    if artifacts.get("screenshot"):
+        lines.extend(
+            [
+                "## Screenshot",
+                "",
+                f"- **screenshot:** `{artifacts['screenshot']}`",
+                "- Open this PNG when reviewing; agents should Read the image before deciding heal/skip/defer.",
+                "",
+            ]
+        )
     if artifacts.get("storage_state"):
         lines.extend(
             [
@@ -181,7 +198,7 @@ def save_failure_report(
     if payload.get("healable"):
         from healing.session_state import note_healable_failure
 
-        note_healable_failure()
+        note_healable_failure(failure_id)
     from healing.healing_reports import emit_failure_captured
 
     emit_failure_captured(payload)
@@ -201,7 +218,7 @@ def capture_from_exception(
     storage_state_path: str | None = None,
     failure_id: str | None = None,
 ) -> tuple[str, Path, Path]:
-    failure_id = failure_id or new_failure_id()
+    failure_id = failure_id or new_failure_id(test_name)
     payload = build_failure_payload(
         failure_id=failure_id,
         test_nodeid=test_nodeid,

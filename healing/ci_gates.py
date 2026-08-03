@@ -253,7 +253,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--reports-dir",
-        default="artifacts/healing-reports",
+        default="healer-artifacts/healing-reports",
         help="Healing reports directory.",
     )
     parser.add_argument(
@@ -284,7 +284,7 @@ def main() -> int:
     reports_dir = workspace / args.reports_dir
 
     if args.skip_reports:
-        reports_dir = workspace / "artifacts" / "healing-reports-nonexistent-skip"
+        reports_dir = workspace / "healer-artifacts" / "healing-reports-nonexistent-skip"
 
     exit_code, errors, warnings = run_ci_gates(
         workspace=workspace,

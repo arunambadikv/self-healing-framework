@@ -44,6 +44,8 @@ def _failure_context(failure_id: str) -> dict[str, Any]:
         return {}
     env = failure.get("environment") or {}
     failing = failure.get("failing_step") or {}
+    artifacts = failure.get("artifacts") or {}
+    screenshot = artifacts.get("screenshot") or ""
     return {
         "failure": failure,
         "test_nodeid": failure.get("test", {}).get("nodeid", ""),
@@ -56,6 +58,7 @@ def _failure_context(failure_id: str) -> dict[str, Any]:
         "failing_method": failing.get("method", ""),
         "failing_action": failing.get("action", ""),
         "locator_id": failing.get("locator_id", ""),
+        "screenshot": screenshot,
     }
 
 
@@ -144,6 +147,13 @@ def format_review_card(
             lines.append(f"  Error: {ctx['error_type']}")
             if ctx.get("error_message"):
                 lines.append(f"  {ctx['error_message'][:200]}")
+        if ctx.get("screenshot"):
+            shot = ctx["screenshot"]
+            try:
+                shot_display = str(Path(shot).resolve())
+            except OSError:
+                shot_display = shot
+            lines.append(f"  Screenshot: {shot_display}")
         lines.append("")
 
     updates = proposal.get("architecture_updates") or []
@@ -176,7 +186,7 @@ def format_menu(*, high_risk: bool = False) -> str:
     lines = [
         "  [1] Heal     — apply patch and run validation",
         "  [2] Skip     — reject with reason (writes RCA)",
-        "  [3] Defer    — decide later (stays patch_ready)",
+        "  [3] Defer    — decide later (status → deferred)",
         "  [4] Failure  — show full failure report",
         "  [5] Dry run  — preview apply without writing files",
         "  [q] Quit     — exit review session",

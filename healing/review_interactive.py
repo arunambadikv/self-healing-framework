@@ -54,6 +54,7 @@ def run_interactive_review(
     *,
     input_fn: Callable[[str], str] | None = None,
     output: TextIO | None = None,
+    auto_confirm: bool = False,
 ) -> int:
     """Walk through patch_ready entries with a guided menu."""
     out = output or sys.stdout
@@ -68,15 +69,11 @@ def run_interactive_review(
     out.write(f"\nStarting interactive review — {count} patch(es) pending.\n")
 
     quit_requested = False
-    deferred_this_session: set[str] = set()
+    deferred_count = 0
     while True:
         if quit_requested:
             break
-        ready = [
-            e
-            for e in list_patch_ready()
-            if e.get("patch_id") and e.get("patch_id") not in deferred_this_session
-        ]
+        ready = list_patch_ready()
         if not ready:
             break
         total = len(ready)
@@ -104,11 +101,11 @@ def run_interactive_review(
                 )
             )
             out.write("\n")
-            out.write(format_menu(high_risk=high_risk))
+            out.write(format_menu(high_risk=high_risk and not auto_confirm))
             choice = _read_line("Your choice: ", read).lower()
 
             if choice in ("1", "h", "heal"):
-                if high_risk and not _confirm_high_risk(read):
+                if high_risk and not auto_confirm and not _confirm_high_risk(read):
                     out.write("Heal cancelled — high-risk confirmation not given.\n")
                     continue
                 rc = decision_heal(patch_id, workspace=workspace, dry_run=False)
@@ -129,8 +126,8 @@ def run_interactive_review(
 
             if choice in ("3", "d", "defer"):
                 decision_defer(patch_id)
-                deferred_this_session.add(patch_id)
-                out.write(f"\n… Deferred {patch_id} for later (still in review queue)\n")
+                deferred_count += 1
+                out.write(f"\n… Deferred {patch_id} (status → deferred)\n")
                 break
 
             if choice in ("4", "f", "failure"):
@@ -142,6 +139,15 @@ def run_interactive_review(
                     out.write("\n")
                 else:
                     out.write(f"\nFailure report not found: {failure_md}\n")
+                try:
+                    from healing.healing_queue import load_failure_payload
+
+                    failure = load_failure_payload(failure_id)
+                    shot = (failure.get("artifacts") or {}).get("screenshot")
+                    if shot:
+                        out.write(f"\nScreenshot: {Path(shot).resolve()}\n")
+                except (FileNotFoundError, OSError):
+                    pass
                 continue
 
             if choice in ("5", "dry", "dry-run", "dryrun"):
@@ -164,7 +170,6 @@ def run_interactive_review(
         out.write("\nAll patches processed.\n")
         write_summary(workspace)
     else:
-        deferred_count = len(deferred_this_session)
         pending = len(remaining)
         out.write(f"\n{pending} patch(es) still awaiting review")
         if deferred_count:

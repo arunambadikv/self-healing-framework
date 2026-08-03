@@ -4,17 +4,19 @@
 
 ## Architecture
 
+- **Runtime root:** `healer-artifacts/` holds `healing.toml` + generated dirs (failures, queue, architecture, reports, auth); separate from the Python package `healing/`
 - **Tests:** page-object fixtures (e.g. `orangehrm_login` in [`pages/orangehrm_login_page.py`](pages/orangehrm_login_page.py)); override app via `HEALING_BASE_URL`
 - **Locators:** Python properties on page classes only (no `locator_registry.yaml` in runtime path)
-- **Failures:** `artifacts/failures/F-*.json` + `.md` + screenshot + `storage-state-F-*.json` (auto on pytest failure)
-- **Patches:** `artifacts/healing-queue/patches/P-*.json` (after MCP propose)
-- **Manifest:** `artifacts/architecture/manifest.json` (run scan before propose/review)
-- **Queue statuses:** `pending_proposal` → `awaiting_agent` → `patch_ready` → `applied` | `skipped` | `not_healable`
+- **Failures:** `healer-artifacts/failures/F-{test-name}-{YYYYMMDD-HHMMSS}.json` + `.md` + matching `screenshot-F-*.png` / `storage-state-F-*.json` (auto on pytest failure; `-2`/`-3` on same-second collision)
+- **Patches:** `healer-artifacts/healing-queue/patches/P-{test-name}-{YYYYMMDD-HHMMSS}.json` (after MCP propose)
+- **Manifest:** `healer-artifacts/architecture/manifest.json` (run scan before propose/review)
+- **Queue statuses:** `pending_proposal` → `awaiting_agent` → `patch_ready` → `applied` | `skipped` | `deferred` | `not_healable`
 
 ## Slash skills
 
 | Skill | Command |
 |-------|---------|
+| Bootstrap in a POM repo | `/healing-init` → `python -m healing.init` |
 | Architecture scan | `/architecture-discovery` → `python -m healing.architecture_scan` |
 | Propose patches | `/healing-propose` → `python -m healing.pom_propose --process-all` |
 | MCP propose (SDK) | `python -m healing.mcp_propose_runner --process-all` |
@@ -22,6 +24,16 @@
 | Locator repair (MCP + proposals) | `/playwright-locator-repair` |
 | Human review + apply | `/healing-review` |
 | Push to dev | `/push-to-dev` |
+
+## Use in another framework
+
+```bash
+pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+healing-init   # optional scaffolding; skills also resolve from the package
+export CURSOR_API_KEY=cursor_...   # only consumer secret needed for MCP propose
+```
+
+Skills ship inside the package (`healing/templates/skills/`) and `healing-init` installs them into `.cursor/skills/`. Runtime config/artifacts live under `healer-artifacts/` so they do not collide with the importable `healing` package. See README § Installation for pytest plugin wiring.
 
 ## Playwright MCP setup
 
@@ -45,8 +57,8 @@ export CURSOR_API_KEY=cursor_...
 
 ```bash
 pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run-healing-demo -v
-# → artifacts/failures/F-<id>.json + .md
-# → classification: selector_break | network | app_regression | ...
+# → healer-artifacts/failures/F-test_orangehrm_broken_login_button-20260801-123456.json + .md
+# → classification: selector_break | network | app_regression | auth_failure | ...
 # → non-healable failures marked not_healable in queue index
 ```
 
@@ -65,7 +77,7 @@ Or enable pre-test scan: `pytest --healing-scan-architecture tests/ -v`
 ```bash
 python -m healing.pom_propose --list
 python -m healing.pom_propose --process-all
-# → stub P-*.json (status: awaiting_agent) + P-<id>-agent-task.md
+# → stub P-{test-name}-{stamp}.json (status: awaiting_agent) + P-…-agent-task.md
 
 python -m healing.mcp_propose_runner --list
 python -m healing.mcp_propose_runner --process-all
@@ -84,10 +96,12 @@ python -m healing.mcp_propose_runner --patch-id P-<id>
 export HEALING_MCP_AUTO=1
 export CURSOR_API_KEY=cursor_...
 pytest tests/ -v
-# on healable locator failure at session end → architecture_scan (if stale) → pom_propose → mcp_propose_runner
+# on healable locator failure at session end → architecture_scan (if stale)
+# → pom_propose (always new stub for this session's failures)
+# → mcp_propose_runner (latest patch first; older duplicate architecture_ref skipped)
 ```
 
-Agent task file per patch: `artifacts/healing-queue/patches/P-<id>-agent-task.md`
+Agent task file per patch: `healer-artifacts/healing-queue/patches/P-<id>-agent-task.md`
 
 Use Playwright MCP (`browser_navigate`, `browser_snapshot`) to fill real `architecture_updates` in `P-*.json`. Then promote:
 
@@ -150,4 +164,4 @@ Removed — use `tests/test_orangehrm_healing.py` with `--run-healing-demo` inst
 
 ## Legacy
 
-SmartPage + `locator_registry.yaml` moved to [`legacy/`](legacy/) for reference only.
+SmartPage + `locator_registry.yaml` are retired (removed from this repo). Locators live only on page-object properties.

@@ -105,23 +105,31 @@ def _scan_test_file(path: Path) -> dict[str, Any]:
 
 
 def build_manifest(workspace: Path) -> dict[str, Any]:
+    from healing.config import load_config
+    from healing.paths import configure_workspace
+
+    configure_workspace(workspace)
+    cfg = load_config(workspace)
+
     paths: list[Path] = []
     pages: dict[str, Any] = {}
-    for page_file in sorted((workspace / "pages").glob("*.py")):
-        if page_file.name.startswith("_") or page_file.name == "__init__.py":
-            continue
-        paths.append(page_file)
-        pages.update(_scan_page_file(page_file))
+    pages_dir = workspace / cfg.pages_dir
+    if pages_dir.exists():
+        for page_file in sorted(pages_dir.glob("*.py")):
+            if page_file.name.startswith("_") or page_file.name == "__init__.py":
+                continue
+            paths.append(page_file)
+            pages.update(_scan_page_file(page_file))
 
     tests: list[dict[str, Any]] = []
-    tests_dir = workspace / "tests"
+    tests_dir = workspace / cfg.tests_dir
     if tests_dir.exists():
         for test_file in sorted(tests_dir.glob("test_*.py")):
             paths.append(test_file)
             tests.append(_scan_test_file(test_file))
 
     data_files: list[str] = []
-    data_dir = workspace / "data"
+    data_dir = workspace / cfg.data_dir
     if data_dir.exists():
         for data_file in sorted(data_dir.rglob("*")):
             if data_file.is_file():
@@ -194,7 +202,9 @@ def main() -> int:
         help="Exit 1 if manifest missing or stale vs current scan.",
     )
     args = parser.parse_args()
-    workspace = args.workspace.resolve()
+    from healing.paths import configure_workspace
+
+    workspace = configure_workspace(args.workspace.resolve())
     manifest = build_manifest(workspace)
     if args.check:
         if not MANIFEST_JSON.exists():

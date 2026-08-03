@@ -5,13 +5,14 @@ from io import StringIO
 from pathlib import Path
 
 from healing.healing_queue import mark_failure_proposed, mark_patch_ready, register_failure
-from healing.paths import ensure_queue_dirs, FAILURES_DIR, QUEUE_PATCHES
+from healing.paths import configure_workspace, ensure_queue_dirs, FAILURES_DIR, QUEUE_PATCHES
 from healing.review_display import format_patch_list, format_review_card, format_menu
 from healing.review_interactive import run_interactive_review
 
 
 def _seed_patch_ready(tmp_path: Path, monkeypatch, *, patch_id: str, failure_id: str) -> None:
     monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
     ensure_queue_dirs()
     failure_payload = {
         "failure_id": failure_id,
@@ -96,7 +97,7 @@ def test_format_menu_high_risk_warning():
 
 def test_interactive_defer_then_quit(tmp_path: Path, monkeypatch):
     _seed_patch_ready(tmp_path, monkeypatch, patch_id="P-inter01", failure_id="F-inter01")
-    inputs = iter(["3", "q"])
+    inputs = iter(["3"])
     output = StringIO()
 
     rc = run_interactive_review(
@@ -108,7 +109,25 @@ def test_interactive_defer_then_quit(tmp_path: Path, monkeypatch):
     assert rc == 0
     text = output.getvalue()
     assert "Deferred P-inter01" in text
-    assert "still awaiting review" in text
+    assert "status → deferred" in text
+    assert "All patches processed" in text
+
+
+def test_format_review_card_includes_screenshot(tmp_path: Path, monkeypatch):
+    patch_id = "P-shot01"
+    failure_id = "F-shot01"
+    _seed_patch_ready(tmp_path, monkeypatch, patch_id=patch_id, failure_id=failure_id)
+    failure_path = FAILURES_DIR / f"{failure_id}.json"
+    failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    shot = tmp_path / "healer-artifacts" / "failures" / f"screenshot-{failure_id}.png"
+    shot.parent.mkdir(parents=True, exist_ok=True)
+    shot.write_bytes(b"fake-png")
+    failure["artifacts"] = {"screenshot": str(shot)}
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    payload = json.loads((QUEUE_PATCHES / f"{patch_id}.json").read_text(encoding="utf-8"))
+    card = format_review_card(patch_id, payload, workspace=tmp_path, index=1, total=1)
+    assert "Screenshot:" in card
+    assert str(shot.resolve()) in card
 
 
 def test_interactive_heal_flow(tmp_path: Path, monkeypatch):

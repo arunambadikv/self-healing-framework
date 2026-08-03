@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "healing"
+version = "0.1.0"
+description = "Playwright POM self-healing: capture, propose, review, and apply locator patches"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "arunambadikv" }]
+dependencies = [
+  "playwright",
+  "pytest",
+  "pytest-playwright",
+  "pyyaml",
+  "rich",
+]
+
+[project.optional-dependencies]
+mcp = ["cursor-sdk"]
+dev = ["cursor-sdk"]
+
+[project.scripts]
+healing-scan = "healing.architecture_scan:main"
+healing-propose = "healing.pom_propose:main"
+healing-mcp-propose = "healing.mcp_propose_runner:main"
+healing-review = "healing.healing_review:main"
+healing-gates = "healing.ci_gates:main"
+healing-init = "healing.init:main"
+
+[project.entry-points."pytest11"]
+healing = "healing.pytest_plugin"
+
+[tool.setuptools.packages.find]
+include = ["healing*"]
+
+[tool.setuptools.package-data]
+healing = [
+  "templates/**/*",
+  "ci_gates_config.yaml",
+]
+
+[tool.healing]
+pages_dir = "pages"
+tests_dir = "tests"
+data_dir = "data"
+artifacts_dir = "healer-artifacts"
+apply_roots = ["pages"]
+skills_dir = ".cursor/skills"
+mcp_config = ".cursor/mcp.json"
+auth_dir = "healer-artifacts/auth"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+  "optional: mark test as optional",
+  "demo_session: team demo only; skipped unless pytest --run-demo-session",
+  "healing_demo: healing pipeline demo; skipped unless pytest --run-healing-demo",
+]

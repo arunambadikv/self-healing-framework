@@ -7,13 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from healing.paths import ensure_queue_dirs
-
-REPORTS_DIR = Path("artifacts/healing-reports")
+from healing.artifact_naming import slugify_test_name
+from healing.paths import ensure_queue_dirs, REPORTS_DIR
 
 
 def _report_path(test_module: str) -> Path:
-    safe = test_module.replace("/", "_").replace("\\", "_") or "unknown"
+    safe = slugify_test_name(test_module)
     return REPORTS_DIR / f"{safe}.json"
 
 

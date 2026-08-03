@@ -1,12 +1,12 @@
 # Healing Flow Demo — Runbook
 
-Four opt-in tests with **intentionally broken locators** to exercise the full healing pipeline:
+Four opt-in OrangeHRM tests plus Sauce Demo tests with **intentionally broken locators** to exercise the full healing pipeline:
 
 capture → classify → propose → MCP runner → human review → apply.
 
 **Target app:** set via `HEALING_BASE_URL` (default: OrangeHRM demo login). The same flow works for any site using page-object tests.
 
-Run only when explicitly requested (skipped in normal CI). **Opens a visible browser** with slow-mo:
+Run only when explicitly requested (skipped in normal CI). Opens a **visible** browser with slow-mo by default; use `HEALING_DEMO_HEADLESS=1` for CI:
 
 ```bash
 pytest tests/test_orangehrm_healing.py --run-healing-demo -v
@@ -94,6 +94,74 @@ pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_pim_menu --run-hea
 
 Run **one test at a time** to keep the healing queue easy to review.
 
+## Test case 5 — Sauce Demo broken login button
+
+| Field | Value |
+|-------|-------|
+| Test | `test_saucedemo_broken_login_button` |
+| Architecture ref | `SauceDemoLoginPage.healing_demo_login_button` |
+| Broken | `get_by_role("button", name="Sign In")` |
+| Expected fix | `get_by_role("button", name="Login")` |
+| Site | https://www.saucedemo.com/ (`standard_user` / `secret_sauce`) |
+
+```bash
+export HEALING_MCP_AUTO=1
+pytest tests/test_saucedemo_healing.py::test_saucedemo_broken_login_button --run-healing-demo -v
+python -m healing.healing_review --list
+python -m healing.healing_review --patch P-<id> --decision heal --yes
+```
+
+## Test case 6 — Sauce Demo inventory (authenticated multi-page)
+
+| Field | Value |
+|-------|-------|
+| Test | `test_saucedemo_broken_inventory_add_to_cart` |
+| Architecture ref | `SauceDemoInventoryPage.healing_demo_add_backpack` |
+| Broken | `get_by_role("button", name="Add Backpack")` |
+| Expected fix | `get_by_role("button", name="Add to cart").first` (or product-specific name) |
+
+```bash
+pytest tests/test_saucedemo_healing.py::test_saucedemo_broken_inventory_add_to_cart --run-healing-demo -v
+```
+
+Storage-state variant (login once via fixture):
+
+```bash
+pytest tests/test_saucedemo_healing.py::test_saucedemo_broken_inventory_with_storage_state --run-healing-demo -v
+```
+
+## Auth / credentials
+
+Public demo defaults work out of the box. Override via env (never commit secrets):
+
+```bash
+export ORANGEHRM_USER=Admin
+export ORANGEHRM_PASSWORD=admin123
+export SAUCEDEMO_USER=standard_user
+export SAUCEDEMO_PASSWORD=secret_sauce
+```
+
+Session fixtures write `healer-artifacts/auth/storage-state-*.json` for reuse and MCP `--storage-state`.
+
+Session expiry / redirect-to-login is classified as `auth_failure` (`not_healable`) — do not propose locator patches for expired sessions.
+
+## Headless CI / remote GitHub Actions
+
+```bash
+export HEALING_DEMO_HEADLESS=1
+pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run-healing-demo -v
+```
+
+Remote pipeline (needs `CURSOR_API_KEY` secret for MCP step):
+
+```bash
+gh workflow run healing-pipeline-e2e.yml -f scenario=login_button
+gh run watch
+# scenarios: login_button | authenticated_dashboard | saucedemo_inventory
+```
+
+Daily architecture heartbeat: see [ARCHITECTURE_HEARTBEAT.md](ARCHITECTURE_HEARTBEAT.md).
+
 ## After human heal — reset demo locators
 
 Healing review applies fixes to `pages/*.py`. Re-break demo locators before the next pipeline run:
@@ -119,9 +187,9 @@ python -m healing.healing_review --patch P-<id> --decision heal
 
 | Stage | Artifact / status |
 |-------|-------------------|
-| Fail | `artifacts/failures/F-*.json`, `.md`, screenshot, `storage-state-F-*.json` |
+| Fail | `healer-artifacts/failures/F-{test-name}-{YYYYMMDD-HHMMSS}.json`, `.md`, `screenshot-F-….png`, `storage-state-F-….json` |
 | Capture | `classification: selector_break`, queue `pending_proposal` |
-| Stub propose | `P-*.json`, `P-*-agent-task.md`, queue `awaiting_agent` |
+| Stub propose | `P-{test-name}-{stamp}.json`, `P-…-agent-task.md`, queue `awaiting_agent` |
 | MCP complete | MCP loads `storage_state` (or replays steps) → `page_url` → snapshot → real `after`, queue `patch_ready` |
 | Human heal | `pages/*.py` updated, queue `applied` |
 

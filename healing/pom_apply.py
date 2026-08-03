@@ -12,9 +12,14 @@ from typing import Any
 
 
 def _allowed_file(path: Path, workspace: Path) -> bool:
+    from healing.config import load_config
+
+    cfg = load_config(workspace)
     rel = path.resolve().relative_to(workspace.resolve())
     parts = rel.parts
-    return len(parts) >= 2 and parts[0] == "pages" and path.suffix == ".py"
+    if not parts or path.suffix != ".py":
+        return False
+    return parts[0] in cfg.apply_roots
 
 
 def apply_architecture_update(
@@ -25,7 +30,7 @@ def apply_architecture_update(
 ) -> str:
     file_path = workspace / update["file"]
     if not _allowed_file(file_path, workspace):
-        raise ValueError(f"Refusing to edit outside pages/: {update['file']}")
+        raise ValueError(f"Refusing to edit outside apply_roots: {update['file']}")
 
     if not file_path.exists():
         raise FileNotFoundError(f"Page file not found: {file_path}")

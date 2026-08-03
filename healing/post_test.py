@@ -52,11 +52,27 @@ def run_architecture_scan_if_needed(workspace: Path) -> int:
 
 
 def run_pom_propose_all(workspace: Path) -> int:
+    """Create stubs only for healable failures captured in this pytest session."""
     from healing.healing_queue import list_unprocessed_failures
     from healing.pom_propose import process_failure_entry
+    from healing.session_state import session_had_healable_failures, session_healable_failure_ids
+
+    if not session_had_healable_failures():
+        print("[healing] pom_propose: no session healable failures to process")
+        return 0
+
+    session_ids = session_healable_failure_ids()
+    pending = list_unprocessed_failures()
+    if session_ids:
+        pending = [e for e in pending if e.get("failure_id") in session_ids]
+    # else: anon-only notes (unit tests) → process all pending
+
+    if not pending:
+        print("[healing] pom_propose: no pending failures from this session")
+        return 0
 
     rc = 0
-    for entry in list_unprocessed_failures():
+    for entry in pending:
         try:
             process_failure_entry(entry, workspace=workspace)
         except Exception as exc:
@@ -66,20 +82,55 @@ def run_pom_propose_all(workspace: Path) -> int:
 
 
 def run_mcp_propose_all(workspace: Path) -> int:
-    from healing.healing_queue import list_awaiting_agent
+    """Complete the latest session patch(es) via MCP (newest first; one per architecture_ref)."""
+    from healing.healing_queue import select_latest_awaiting_patches
     from healing.mcp_propose_runner import process_patch_entry
+    from healing.session_state import session_new_patch_ids
 
     api_key = os.environ.get("CURSOR_API_KEY", "").strip() or None
-    awaiting = list_awaiting_agent()
-    if not awaiting:
+    session_patches = session_new_patch_ids()
+    if not session_patches:
+        print(
+            "[healing] mcp_propose_runner: no session patches to process "
+            "(stale awaiting_agent skipped; "
+            "run python -m healing.mcp_propose_runner --patch-id P-... manually)"
+        )
         return 0
+
+    session_entries = [
+        e for e in select_latest_awaiting_patches() if e.get("patch_id") in session_patches
+    ]
+    # Prefer absolute newest session patch when multiple refs; still run all latest-per-ref
+    # that were created this session (already newest-first from select_latest).
+    if not session_entries:
+        # Session created a patch that is not awaiting (unlikely) — try raw session ids latest
+        from healing.healing_queue import list_awaiting_agent, sort_entries_newest_first
+
+        session_entries = sort_entries_newest_first(
+            [e for e in list_awaiting_agent() if e.get("patch_id") in session_patches]
+        )
+
+    if not session_entries:
+        print(
+            "[healing] mcp_propose_runner: session patches are not awaiting_agent "
+            "(already patch_ready or missing) — nothing to run"
+        )
+        return 0
+
+    latest = session_entries[0]
+    print(
+        f"[healing] mcp_propose_runner: processing latest patch "
+        f"{latest.get('patch_id')} first ({len(session_entries)} session patch(es))"
+    )
+
     rc = 0
-    for entry in awaiting:
+    for entry in session_entries:
+        patch_id = entry.get("patch_id")
         try:
             if not process_patch_entry(entry, workspace=workspace, api_key=api_key):
                 rc = 1
         except Exception as exc:
-            print(f"[healing] mcp_propose_runner failed for {entry.get('patch_id')}: {exc}")
+            print(f"[healing] mcp_propose_runner failed for {patch_id}: {exc}")
             rc = 1
     return rc
 
@@ -105,7 +156,7 @@ def run_post_test_chain(workspace: Path | None = None) -> None:
             "(no healable locator failures captured this session)"
         )
         return
-    print("\n[healing] HEALING_MCP_AUTO enabled — running post-test chain")
+    print("\n[healing] HEALING_MCP_AUTO enabled — running post-test chain (this session only)")
     steps = (
         ("architecture_scan", run_architecture_scan_if_needed),
         ("pom_propose", run_pom_propose_all),

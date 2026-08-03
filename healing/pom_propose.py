@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import uuid
 from pathlib import Path
 from typing import Any
 
+from healing.artifact_naming import build_artifact_id
 from healing.healing_queue import (
-    find_open_patch_for_architecture_ref,
-    link_failure_to_existing_patch,
     list_unprocessed_failures,
     load_failure_payload,
     mark_failure_not_healable,
@@ -18,11 +16,18 @@ from healing.healing_queue import (
 )
 from healing.failure_classifier import classify_failure, is_healable
 from healing.locator_source import read_property_return_expression, resolve_page_path
-from healing.paths import MANIFEST_JSON, QUEUE_PATCHES, ensure_queue_dirs
+from healing.paths import FAILURES_DIR, MANIFEST_JSON, QUEUE_PATCHES, ensure_queue_dirs
 
 
-def new_patch_id() -> str:
-    return f"P-{uuid.uuid4().hex[:12]}"
+def new_patch_id(test_name: str | None = None) -> str:
+    """Readable id: P-{test-name}-{YYYYMMDD-HHMMSS} (with -2/-3 on collision)."""
+    ensure_queue_dirs()
+    return build_artifact_id(
+        "P",
+        test_name,
+        directory=Path(str(QUEUE_PATCHES)),
+        suffixes=(".json", ".md", "-agent-task.md"),
+    )
 
 
 def _load_manifest(workspace: Path) -> dict[str, Any]:
@@ -104,7 +109,7 @@ def build_proposal_prompt(
 ## Required actions (Playwright MCP + Agent)
 1. Reach the failure UI using session restore or step replay above (do not guess locators).
 2. `browser_snapshot` — find the real element for `{failure.get('architecture_ref')}`.
-3. Update the existing stub at `artifacts/healing-queue/patches/{patch_id}.json` (patch id `{patch_id}`)
+3. Update the existing stub at `healer-artifacts/healing-queue/patches/{patch_id}.json` (patch id `{patch_id}`)
 4. Include `architecture_updates` targeting `pages/*.py` only (file, symbol, line, before, after)
 5. Set `risk_level` (low/medium/high) and `validation_command`
 6. Write matching `.md` human summary
@@ -121,7 +126,8 @@ def write_stub_patch(
     workspace: Path,
 ) -> tuple[str, Path, Path]:
     """Write agent task prompt + minimal stub; agent replaces stub via MCP."""
-    patch_id = new_patch_id()
+    test_name = (failure.get("test") or {}).get("name")
+    patch_id = new_patch_id(test_name)
     failure_id = failure["failure_id"]
     arch_ctx = _architecture_context_for_ref(manifest, failure.get("architecture_ref"))
     page_class = (failure.get("architecture_ref") or "").partition(".")[0]
@@ -153,8 +159,8 @@ def write_stub_patch(
         ],
         "validation_command": f"{_python()} -m pytest {failure['test']['file']} -q",
         "links": {
-            "failure_json": str((workspace / "artifacts/failures" / f"{failure_id}.json").resolve()),
-            "failure_md": str((workspace / "artifacts/failures" / f"{failure_id}.md").resolve()),
+            "failure_json": str((FAILURES_DIR / f"{failure_id}.json").resolve()),
+            "failure_md": str((FAILURES_DIR / f"{failure_id}.md").resolve()),
         },
         "proposal_status": "awaiting_agent",
     }
@@ -203,21 +209,6 @@ def process_failure_entry(entry: dict[str, Any], *, workspace: Path) -> str | No
         return None
 
     manifest = _load_manifest(workspace)
-    architecture_ref = failure.get("architecture_ref")
-    existing = find_open_patch_for_architecture_ref(
-        architecture_ref or "",
-        exclude_failure_id=failure_id,
-    )
-    if existing:
-        patch_id = existing.get("patch_id")
-        link_failure_to_existing_patch(
-            failure_id,
-            existing,
-            note=f"Linked to existing open patch for {architecture_ref}",
-        )
-        print(f"[skip] {failure_id}: linked to existing patch {patch_id} ({architecture_ref})")
-        return patch_id
-
     base_url = failure.get("environment", {}).get("base_url") or ""
 
     patch_id, json_path, md_path = write_stub_patch(failure, manifest=manifest, workspace=workspace)
@@ -230,6 +221,9 @@ def process_failure_entry(entry: dict[str, Any], *, workspace: Path) -> str | No
     )
 
     mark_failure_proposed(failure_id, patch_id, patch_json=json_path, patch_md=md_path)
+    from healing.session_state import note_session_patch
+
+    note_session_patch(patch_id)
     return patch_id
 
 

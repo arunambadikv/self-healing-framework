@@ -14,7 +14,14 @@ test-results/
 playwright-report/
 playwright/.cache/
 
-# Generated healing outputs (reproduced by pytest / pipelines)
+# Generated healing outputs (keep healer-artifacts/healing.toml tracked)
+healer-artifacts/failures/
+healer-artifacts/healing-queue/
+healer-artifacts/architecture/
+healer-artifacts/healing-reports/
+healer-artifacts/auth/
+# Legacy layouts
+healer/
 artifacts/
 
 # Local env and secrets

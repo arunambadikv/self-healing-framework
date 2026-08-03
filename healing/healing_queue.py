@@ -28,8 +28,6 @@ STATUSES = frozenset(
     }
 )
 
-OPEN_PATCH_STATUSES = frozenset({"pending_proposal", "awaiting_agent", "patch_ready"})
-
 
 def is_patch_complete(proposal: dict[str, Any]) -> bool:
     """True when architecture_updates have MCP-verified locator expressions (no TODO)."""
@@ -96,56 +94,6 @@ def register_failure(
     _save_index(index)
 
 
-def find_open_patch_for_architecture_ref(
-    architecture_ref: str,
-    *,
-    exclude_failure_id: str | None = None,
-) -> dict[str, Any] | None:
-    """Return an index entry with an open patch for the same architecture ref, if any."""
-    if not architecture_ref:
-        return None
-    index = _load_index()
-    for entry in index.get("entries", []):
-        if entry.get("status") not in OPEN_PATCH_STATUSES:
-            continue
-        failure_id = entry.get("failure_id")
-        if not failure_id or failure_id == exclude_failure_id:
-            continue
-        try:
-            failure = load_failure_payload(failure_id)
-        except FileNotFoundError:
-            continue
-        if failure.get("architecture_ref") == architecture_ref:
-            return entry
-    return None
-
-
-def link_failure_to_existing_patch(
-    failure_id: str,
-    existing: dict[str, Any],
-    *,
-    note: str,
-) -> None:
-    """Attach a new failure to an existing open patch instead of creating a duplicate stub."""
-    index = _load_index()
-    entry = _find_entry(index, failure_id=failure_id)
-    if entry is None:
-        raise KeyError(f"Unknown failure_id: {failure_id}")
-    entry["patch_id"] = existing.get("patch_id")
-    entry["status"] = existing.get("status", "pending_proposal")
-    entry["patch_json"] = existing.get("patch_json")
-    entry["patch_md"] = existing.get("patch_md")
-    entry["processed_at"] = _utc_now()
-    entry["notes"] = note
-    payload = load_failure_payload(failure_id)
-    payload["processed"] = True
-    payload["linked_patch_id"] = existing.get("patch_id")
-    (FAILURES_DIR / f"{failure_id}.json").write_text(
-        json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8"
-    )
-    _save_index(index)
-
-
 def load_failure_payload(failure_id: str) -> dict[str, Any]:
     path = FAILURES_DIR / f"{failure_id}.json"
     if not path.exists():
@@ -162,14 +110,53 @@ def list_unprocessed_failures() -> list[dict[str, Any]]:
     return result
 
 
+def sort_entries_newest_first(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Sort queue entries by created_at descending (latest first)."""
+    return sorted(entries, key=lambda e: str(e.get("created_at") or ""), reverse=True)
+
+
 def list_patch_ready() -> list[dict[str, Any]]:
     index = _load_index()
-    return [e for e in index.get("entries", []) if e.get("status") == "patch_ready"]
+    ready = [e for e in index.get("entries", []) if e.get("status") == "patch_ready"]
+    return sort_entries_newest_first(ready)
 
 
 def list_awaiting_agent() -> list[dict[str, Any]]:
     index = _load_index()
-    return [e for e in index.get("entries", []) if e.get("status") == "awaiting_agent"]
+    awaiting = [e for e in index.get("entries", []) if e.get("status") == "awaiting_agent"]
+    return sort_entries_newest_first(awaiting)
+
+
+def select_latest_awaiting_patches(
+    entries: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Return awaiting_agent patches newest-first, keeping only the latest per architecture_ref.
+
+    Entries without an architecture_ref are kept individually (keyed by patch_id).
+    """
+    awaiting = sort_entries_newest_first(list(entries) if entries is not None else list_awaiting_agent())
+    selected: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for entry in awaiting:
+        patch_id = entry.get("patch_id")
+        if not patch_id:
+            continue
+        key = patch_id
+        failure_id = entry.get("failure_id")
+        if failure_id:
+            try:
+                failure = load_failure_payload(str(failure_id))
+                ref = failure.get("architecture_ref")
+                if ref:
+                    key = str(ref)
+            except FileNotFoundError:
+                pass
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        selected.append(entry)
+    return selected
 
 
 def mark_failure_not_healable(failure_id: str, *, reason: str) -> None:

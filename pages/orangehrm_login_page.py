@@ -36,6 +36,10 @@ class OrangeHrmLoginPage(BasePage):
         """Healing demo: intentionally broken until MCP repair."""
         return self.page.get_by_role("textbox", name="User Name")
 
+    def ready_locator(self) -> Locator:
+        """Wait for login form before fills — OrangeHRM demo is often slow/flaky."""
+        return self.username_input
+
     def fill_username(self, value: str) -> None:
         self._fill_locator("fill_username", "username_input", self.username_input, value)
 

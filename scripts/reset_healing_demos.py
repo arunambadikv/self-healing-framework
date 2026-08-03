@@ -18,6 +18,12 @@ DEMO_BREAKS: dict[Path, dict[str, str]] = {
         "healing_demo_dashboard_heading": 'self.page.get_by_role("heading", name="Home")',
         "healing_demo_pim_link": 'self.page.get_by_role("link", name="Employee List")',
     },
+    WORKSPACE / "pages/saucedemo_login_page.py": {
+        "healing_demo_login_button": 'self.page.get_by_role("button", name="Sign In")',
+    },
+    WORKSPACE / "pages/saucedemo_inventory_page.py": {
+        "healing_demo_add_backpack": 'self.page.get_by_role("button", name="Add Backpack")',
+    },
 }
 
 

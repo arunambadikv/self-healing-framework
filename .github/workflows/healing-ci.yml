@@ -2,9 +2,9 @@ name: Healing Framework CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, dev]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, dev]
 
 jobs:
   test:
@@ -18,8 +18,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[mcp]"
           playwright install chromium
 
       - name: Run pytest
@@ -36,10 +36,10 @@ jobs:
         with:
           name: healing-artifacts
           path: |
-            artifacts/failures/
-            artifacts/healing-queue/
-            artifacts/architecture/
-            artifacts/healing-reports/
+            healer-artifacts/failures/
+            healer-artifacts/healing-queue/
+            healer-artifacts/architecture/
+            healer-artifacts/healing-reports/
           if-no-files-found: ignore
 
       - name: Fail if pytest failed
@@ -65,12 +65,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: healing-artifacts
-          path: artifacts
+          path: .
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[mcp]"
           playwright install chromium
 
       - name: Create stub patches
@@ -98,10 +98,10 @@ jobs:
         with:
           name: healing-artifacts-post-propose
           path: |
-            artifacts/failures/
-            artifacts/healing-queue/
-            artifacts/architecture/
-            artifacts/healing-reports/
+            healer-artifacts/failures/
+            healer-artifacts/healing-queue/
+            healer-artifacts/architecture/
+            healer-artifacts/healing-reports/
           if-no-files-found: ignore
 
   healing-gates:
@@ -117,22 +117,22 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e .
 
       - name: Download post-propose artifacts
         if: needs.propose-on-failure.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: healing-artifacts-post-propose
-          path: artifacts
+          path: .
 
       - name: Download test artifacts
         if: needs.propose-on-failure.result != 'success'
         uses: actions/download-artifact@v4
         with:
           name: healing-artifacts
-          path: artifacts
+          path: .
 
       - name: Refresh architecture manifest
         run: python -m healing.architecture_scan

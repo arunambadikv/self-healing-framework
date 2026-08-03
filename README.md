@@ -9,15 +9,29 @@ Page Object Model tests (`pages/*.py`) with **fail-fast** execution and a **post
 
 ## Installation
 
+### This reference repo
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -e ".[mcp]"
+# or: pip install -r requirements.txt
 playwright install chromium
 python -m healing.architecture_scan
 ```
 
-For automated MCP propose (Phase C), set `CURSOR_API_KEY` in `.env` (see `.env.example`). The `cursor-sdk` package is included in `requirements.txt`.
+### Use in your Playwright POM framework
+
+```bash
+pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+# or editable from a local checkout: pip install -e "/path/to/self-healing-framework[mcp]"
+cd /path/to/your-pom-project
+healing-init   # or: python -m healing.init   / Cursor: /healing-init
+```
+
+`healing-init` writes `healer-artifacts/healing.toml`, `healer-artifacts/` dirs, Cursor skills into `.cursor/skills/`, and a Playwright MCP stub. Operator skills also ship **inside the package** (`healing/templates/skills/`) and are used automatically when `.cursor/skills/` is absent — the only consumer-side secret required for MCP propose is `CURSOR_API_KEY`. Pytest loads the plugin via the `pytest11` entry point on install.
+
+For automated MCP propose, set `CURSOR_API_KEY` in `.env` (see `.env.example`). The `cursor-sdk` package is included via the `mcp` extra / `requirements.txt`.
 
 ## Quick start
 
@@ -32,7 +46,7 @@ def test_example(demo):
 
 ```bash
 pytest tests/ -v
-# on failure → artifacts/failures/F-*.json + .md
+# on failure → healer-artifacts/failures/F-{test-name}-{YYYYMMDD-HHMMSS}.json + .md
 
 python -m healing.architecture_scan
 python -m healing.pom_propose --process-all
@@ -48,7 +62,8 @@ python -m healing.healing_review --summary
 
 | Command | Purpose |
 |---------|---------|
-| `/architecture-discovery` | Refresh `artifacts/architecture/manifest.json` |
+| `/architecture-discovery` | Refresh `healer-artifacts/architecture/manifest.json` |
+| `/healing-init` | Bootstrap healing in a consumer POM repo |
 | `/healing-propose` | Create patch proposals from failures |
 | `/playwright-locator-repair` | MCP diagnosis + write `P-*.json` proposals |
 | `/healing-review` | Human approve / skip / apply via `pom_apply` |
@@ -80,11 +95,13 @@ See [AGENTS.md](AGENTS.md) and GitHub branch protection for `main`.
 
 ```text
 pages/              # locators + methods (single source of truth)
-tests/              # tests use `demo` fixture only
-healing/            # failure capture, queue, pom_apply, architecture_scan
-.cursor/skills/      # slash-command skills
-artifacts/          # generated (gitignored): failures/, healing-queue/, architecture/
-demo-assets/        # example MCP resolved JSON
+tests/              # tests use page-object fixtures
+healing/            # Python package: capture, queue, propose, review, apply
+healer-artifacts/  # runtime root (config + generated artifacts)
+  healing.toml      # layout config
+  failures/ ...     # generated (gitignored)
+.cursor/skills/     # slash-command skills (installed from package templates)
+.cursor/mcp.json    # Playwright MCP stub
 ```
 
 ## Healing flow demos (opt-in)
