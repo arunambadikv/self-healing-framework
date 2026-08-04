@@ -35,20 +35,25 @@ def pytest_addoption(parser) -> None:
 def pytest_configure(config) -> None:
     from healing.doctor import load_dotenv_files
     from healing.paths import configure_workspace
+    from healing.playwright_trace import install_playwright_tracing
 
     workspace = Path(config.rootpath)
     configure_workspace(workspace)
     load_dotenv_files(workspace)
+    # Patch Playwright Locator/Page so consumer POMs get test_steps without BasePage helpers.
+    install_playwright_tracing()
 
 
 def pytest_sessionstart(session) -> None:
     from healing.auto_scan import run_auto_architecture_discovery
     from healing.paths import configure_workspace
+    from healing.playwright_trace import install_playwright_tracing
     from healing.session_state import reset_session_state
 
     workspace = Path(session.config.rootpath)
     configure_workspace(workspace)
     reset_session_state()
+    install_playwright_tracing()
     # After pip install/update (or stale pages), refresh architecture automatically.
     force = bool(session.config.getoption("--healing-scan-architecture"))
     run_auto_architecture_discovery(workspace, force=force)
@@ -57,8 +62,12 @@ def pytest_sessionstart(session) -> None:
 def pytest_sessionfinish(session, exitstatus) -> None:
     workspace = Path(session.config.rootpath)
     from healing.post_test import run_post_test_chain
+    from healing.playwright_trace import uninstall_playwright_tracing
 
-    run_post_test_chain(workspace)
+    try:
+        run_post_test_chain(workspace)
+    finally:
+        uninstall_playwright_tracing()
 
 
 def pytest_collection_modifyitems(config, items) -> None:

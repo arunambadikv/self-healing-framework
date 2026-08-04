@@ -189,7 +189,7 @@ your-pom-project/
 
 Do **not** create a top-level folder named `healing/` for runtime files — that can shadow the installed Python package. Use `healer-artifacts/`.
 
-Page objects may call `page.locator(...).click()` directly; failures are still marked healable when the traceback points at `pages/*.py`. Prefer `healing.base_page.BasePage` + `@property` locators when you can, for richer step traces.
+Page objects may call `page.locator(...).click()` directly. The installed pytest plugin auto-instruments Playwright `Locator`/`Page` actions and records `test_steps` from `pages/*.py` stack frames — no consumer helpers required. `healing.base_page.BasePage` is optional (timeouts, retries, explicit `locator_id` names). Traceback inference remains a fallback if instrumentation misses.
 
 ---
 

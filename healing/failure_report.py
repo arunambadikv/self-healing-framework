@@ -55,9 +55,9 @@ def _module_stem_to_page_class(stem: str) -> str:
 def infer_architecture_from_traceback(traceback_text: str) -> dict[str, Any] | None:
     """Infer page method from pytest/Playwright traceback when step tracing is absent.
 
-    Consumer POMs often call ``page.locator(...).click()`` without BasePage
-    ``record_step``, so architecture_ref would otherwise be missing and the failure
-    would be classified not_healable (blocking HEALING_MCP_AUTO).
+    Prefer package auto-instrumentation (``healing.playwright_trace``) or BasePage
+    helpers. This fallback still marks failures healable when the traceback points
+    at ``pages/*.py`` (blocking HEALING_MCP_AUTO otherwise).
     """
     patterns = (
         # pytest short TB: pages/login_page.py:18: in click_submit_wrong

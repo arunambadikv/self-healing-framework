@@ -6,6 +6,7 @@ import time
 
 from playwright.sync_api import Error, Locator, Page, expect
 
+from healing.playwright_trace import suppress_auto_trace
 from healing.step_trace import record_step
 from healing.timeouts import (
     ACTION_TIMEOUT_MS,
@@ -33,7 +34,12 @@ def _is_transient_navigation_error(exc: BaseException) -> bool:
 
 
 class BasePage:
-    """Playwright page object base with navigation retries and healing step traces."""
+    """Playwright page object base with navigation retries and healing step traces.
+
+    Explicit ``record_step`` calls keep rich ``locator_id`` values. Auto-instrumentation
+    of Playwright Locator/Page (see ``healing.playwright_trace``) is suppressed around
+    the underlying action so steps are not duplicated.
+    """
 
     def __init__(self, page: Page, base_url: str) -> None:
         self.page = page
@@ -58,14 +64,15 @@ class BasePage:
         attempts = max(1, int(NAV_RETRIES))
         for attempt in range(1, attempts + 1):
             try:
-                self.page.goto(
-                    self.base_url,
-                    wait_until="domcontentloaded",
-                    timeout=NAV_TIMEOUT_MS,
-                )
-                ready = self.ready_locator()
-                if ready is not None:
-                    ready.wait_for(state="visible", timeout=READY_TIMEOUT_MS)
+                with suppress_auto_trace():
+                    self.page.goto(
+                        self.base_url,
+                        wait_until="domcontentloaded",
+                        timeout=NAV_TIMEOUT_MS,
+                    )
+                    ready = self.ready_locator()
+                    if ready is not None:
+                        ready.wait_for(state="visible", timeout=READY_TIMEOUT_MS)
                 return
             except Error as exc:
                 last_error = exc
@@ -86,27 +93,33 @@ class BasePage:
 
     def _click_locator(self, method: str, locator_id: str, locator: Locator) -> None:
         self._record(method, "click", locator_id, locator_summary=locator_id)
-        locator.click(timeout=ACTION_TIMEOUT_MS)
+        with suppress_auto_trace():
+            locator.click(timeout=ACTION_TIMEOUT_MS)
 
     def _fill_locator(self, method: str, locator_id: str, locator: Locator, value: str) -> None:
         self._record(method, "fill", locator_id, locator_summary=f"{locator_id}={value!r}")
-        locator.fill(value, timeout=ACTION_TIMEOUT_MS)
+        with suppress_auto_trace():
+            locator.fill(value, timeout=ACTION_TIMEOUT_MS)
 
     def _check_locator(self, method: str, locator_id: str, locator: Locator) -> None:
         self._record(method, "check", locator_id, locator_summary=locator_id)
-        locator.check(timeout=ACTION_TIMEOUT_MS)
+        with suppress_auto_trace():
+            locator.check(timeout=ACTION_TIMEOUT_MS)
 
     def _uncheck_locator(self, method: str, locator_id: str, locator: Locator) -> None:
         self._record(method, "uncheck", locator_id, locator_summary=locator_id)
-        locator.uncheck(timeout=ACTION_TIMEOUT_MS)
+        with suppress_auto_trace():
+            locator.uncheck(timeout=ACTION_TIMEOUT_MS)
 
     def _select_locator(self, method: str, locator_id: str, locator: Locator, value: str) -> None:
         self._record(method, "select_option", locator_id, locator_summary=f"{locator_id}={value!r}")
-        locator.select_option(value, timeout=ACTION_TIMEOUT_MS)
+        with suppress_auto_trace():
+            locator.select_option(value, timeout=ACTION_TIMEOUT_MS)
 
     def _expect_visible(self, method: str, locator_id: str, locator: Locator) -> None:
         self._record(method, "expect_visible", locator_id, locator_summary=locator_id)
-        expect(locator).to_be_visible(timeout=ACTION_TIMEOUT_MS)
+        with suppress_auto_trace():
+            expect(locator).to_be_visible(timeout=ACTION_TIMEOUT_MS)
 
     def _drag_to(
         self,
@@ -122,4 +135,5 @@ class BasePage:
             source_id,
             locator_summary=f"{source_id} -> {target_id}",
         )
-        source.drag_to(target, timeout=max(ACTION_TIMEOUT_MS, 5000))
+        with suppress_auto_trace():
+            source.drag_to(target, timeout=max(ACTION_TIMEOUT_MS, 5000))

@@ -1,6 +1,6 @@
 # Project Status
 
-> **Last updated:** 2026-07-23  
+> **Last updated:** 2026-08-04  
 > **Branch:** `dev`  
 > **Repo:** [arunambadikv/self-healing-framework](https://github.com/arunambadikv/self-healing-framework)
 
@@ -19,7 +19,7 @@ Playwright Python POM healing framework, now **installable** (`pip install -e ".
 | Phase | Status | Module / artifact |
 |-------|--------|-------------------|
 | POM tests + page fixtures | Done | `pages/`, `tests/conftest.py` |
-| Step trace on page actions | Done | `healing/step_trace.py`, `healing/base_page.py` |
+| Step trace on page actions | Done | `healing/step_trace.py`, `healing/playwright_trace.py` (auto Locator/Page patch), optional `healing/base_page.py` |
 | Failure capture (F-*) | Done | `healing/failure_report.py`, `healing/pytest_plugin.py` |
 | Failure classification | Done | `healing/failure_classifier.py` (incl. `auth_failure`) |
 | Architecture scan + manifest | Done | `healing/architecture_scan.py` → `healer-artifacts/architecture/` |
@@ -58,7 +58,7 @@ docs/                  # Runbooks and this status file
 
 | Class | File | Notes |
 |-------|------|-------|
-| `BasePage` | `pages/base_page.py` (re-exports `healing.base_page`) | Step tracing, shared actions |
+| `BasePage` | `pages/base_page.py` (re-exports `healing.base_page`) | Optional helpers; auto-trace via `playwright_trace` |
 | `OrangeHrmLoginPage` | `pages/orangehrm_login_page.py` | Login + healing demo locator |
 | `OrangeHrmDashboardPage` | `pages/orangehrm_dashboard_page.py` | Post-login healing demo |
 | `SauceDemoLoginPage` | `pages/saucedemo_login_page.py` | Sauce Demo login healing demo |
