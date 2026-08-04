@@ -12,9 +12,14 @@ from typing import Any
 
 
 def _allowed_file(path: Path, workspace: Path) -> bool:
+    from healing.config import load_config
+
+    cfg = load_config(workspace)
     rel = path.resolve().relative_to(workspace.resolve())
     parts = rel.parts
-    return len(parts) >= 2 and parts[0] == "pages" and path.suffix == ".py"
+    if not parts or path.suffix != ".py":
+        return False
+    return parts[0] in cfg.apply_roots
 
 
 def apply_architecture_update(
@@ -25,7 +30,7 @@ def apply_architecture_update(
 ) -> str:
     file_path = workspace / update["file"]
     if not _allowed_file(file_path, workspace):
-        raise ValueError(f"Refusing to edit outside pages/: {update['file']}")
+        raise ValueError(f"Refusing to edit outside apply_roots: {update['file']}")
 
     if not file_path.exists():
         raise FileNotFoundError(f"Page file not found: {file_path}")
@@ -42,8 +47,12 @@ def apply_architecture_update(
         new_content = content.replace(before, after, 1)
         message = f"Replaced locator expression for '{symbol}' in {update['file']}"
     elif symbol and after:
-        # Replace return line inside @property def symbol
-        pattern = rf"(@property\s+def\s+{re.escape(symbol)}\s*\([^)]*\)\s*->[^:]+:\s*\n\s*return\s+)(.+)"
+        # Replace return expression inside @property def symbol (docstring allowed)
+        pattern = (
+            rf"(@property\s+def\s+{re.escape(symbol)}\s*\([^)]*\)\s*->[^:]+:\s*"
+            rf"(?:\n\s+\"\"\"[\s\S]*?\"\"\"\s*)?"
+            rf"\n\s*return\s+)(.+)"
+        )
         match = re.search(pattern, content)
         if match:
             new_content = content[: match.start(2)] + after + content[match.end(2) :]

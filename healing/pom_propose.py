@@ -4,20 +4,30 @@ from __future__ import annotations
 
 import argparse
 import json
-import uuid
 from pathlib import Path
 from typing import Any
 
+from healing.artifact_naming import build_artifact_id
 from healing.healing_queue import (
     list_unprocessed_failures,
     load_failure_payload,
+    mark_failure_not_healable,
     mark_failure_proposed,
 )
-from healing.paths import MANIFEST_JSON, QUEUE_PATCHES, ensure_queue_dirs
+from healing.failure_classifier import classify_failure, is_healable
+from healing.locator_source import read_property_return_expression, resolve_page_path
+from healing.paths import FAILURES_DIR, MANIFEST_JSON, QUEUE_PATCHES, ensure_queue_dirs
 
 
-def new_patch_id() -> str:
-    return f"P-{uuid.uuid4().hex[:12]}"
+def new_patch_id(test_name: str | None = None) -> str:
+    """Readable id: P-{test-name}-{YYYYMMDD-HHMMSS} (with -2/-3 on collision)."""
+    ensure_queue_dirs()
+    return build_artifact_id(
+        "P",
+        test_name,
+        directory=Path(str(QUEUE_PATCHES)),
+        suffixes=(".json", ".md", "-agent-task.md"),
+    )
 
 
 def _load_manifest(workspace: Path) -> dict[str, Any]:
@@ -46,16 +56,47 @@ def build_proposal_prompt(
     *,
     manifest: dict[str, Any],
     base_url: str,
+    patch_id: str,
 ) -> str:
     failure_id = failure["failure_id"]
     arch = _architecture_context_for_ref(manifest, failure.get("architecture_ref"))
+    env = failure.get("environment") or {}
+    page_url = env.get("page_url") or base_url
+    artifacts = failure.get("artifacts") or {}
+    storage_state = artifacts.get("storage_state")
+    failing = failure.get("failing_step") or {}
+    steps = failure.get("test_steps") or []
+    prior_steps = [s for s in steps if s.get("index", 0) < failing.get("index", len(steps))]
+
+    restore_block = ""
+    if storage_state:
+        restore_block = f"""
+## Session restore (preferred)
+- Playwright MCP is started with `--isolated --storage-state={storage_state}` when available.
+- Or call `browser_set_storage_state` with path `{storage_state}` if the browser is already open.
+- Then `browser_navigate` → `{page_url}` (failure page, not only base_url).
+- Then `browser_snapshot` — find element for `{failure.get('architecture_ref')}`.
+"""
+    else:
+        restore_block = f"""
+## Reach failure context (no storage_state)
+1. Prefer `browser_navigate` → `{page_url}` if that URL already shows the failing UI.
+2. Otherwise replay successful steps before the failure (use *correct* locators from `pages/*.py` / manifest; skip the failing step):
+```json
+{json.dumps(prior_steps, indent=2)}
+```
+3. Then `browser_snapshot` — find element for `{failure.get('architecture_ref')}`.
+"""
+
     return f"""# Healing proposal task — {failure_id}
 
 ## Failure summary
 - Test: `{failure['test']['nodeid']}`
 - Error: `{failure['error']['type']}` — {failure['error']['message'][:400]}
 - Architecture ref: `{failure.get('architecture_ref')}`
-- Page URL: {failure.get('environment', {}).get('page_url')}
+- Base URL: {base_url}
+- Page URL at failure: {page_url}
+- storage_state: {storage_state or "(none)"}
 
 ## Architecture context
 ```json
@@ -63,12 +104,12 @@ def build_proposal_prompt(
 ```
 
 ## Steps before failure
-{json.dumps(failure.get('test_steps', []), indent=2)}
-
+{json.dumps(steps, indent=2)}
+{restore_block}
 ## Required actions (Playwright MCP + Agent)
-1. `browser_navigate` → {base_url}
-2. `browser_snapshot` — find element for `{failure.get('architecture_ref')}`
-3. Write `artifacts/healing-queue/patches/{failure_id.replace('F-', 'P-')}.json` — use a NEW patch id `{new_patch_id()}` linked to failure_id `{failure_id}`
+1. Reach the failure UI using session restore or step replay above (do not guess locators).
+2. `browser_snapshot` — find the real element for `{failure.get('architecture_ref')}`.
+3. Update the existing stub at `healer-artifacts/healing-queue/patches/{patch_id}.json` (patch id `{patch_id}`)
 4. Include `architecture_updates` targeting `pages/*.py` only (file, symbol, line, before, after)
 5. Set `risk_level` (low/medium/high) and `validation_command`
 6. Write matching `.md` human summary
@@ -85,13 +126,19 @@ def write_stub_patch(
     workspace: Path,
 ) -> tuple[str, Path, Path]:
     """Write agent task prompt + minimal stub; agent replaces stub via MCP."""
-    patch_id = new_patch_id()
+    test_name = (failure.get("test") or {}).get("name")
+    patch_id = new_patch_id(test_name)
     failure_id = failure["failure_id"]
     arch_ctx = _architecture_context_for_ref(manifest, failure.get("architecture_ref"))
-    file_path = arch_ctx.get("file") or "pages/demo_page.py"
+    page_class = (failure.get("architecture_ref") or "").partition(".")[0]
+    page_info = manifest.get("pages", {}).get(page_class, {})
+    file_path = arch_ctx.get("file") or page_info.get("file") or "pages/unknown.py"
     locator_id = arch_ctx.get("locator_id") or "unknown"
     loc = arch_ctx.get("locator") or {}
-    before_expr = loc.get("expression", "TODO")
+    page_path = resolve_page_path(workspace, file_path)
+    before_expr = read_property_return_expression(page_path, locator_id)
+    if not before_expr:
+        before_expr = loc.get("expression", "TODO")
 
     proposal = {
         "patch_id": patch_id,
@@ -112,8 +159,8 @@ def write_stub_patch(
         ],
         "validation_command": f"{_python()} -m pytest {failure['test']['file']} -q",
         "links": {
-            "failure_json": str((workspace / "artifacts/failures" / f"{failure_id}.json").resolve()),
-            "failure_md": str((workspace / "artifacts/failures" / f"{failure_id}.md").resolve()),
+            "failure_json": str((FAILURES_DIR / f"{failure_id}.json").resolve()),
+            "failure_md": str((FAILURES_DIR / f"{failure_id}.md").resolve()),
         },
         "proposal_status": "awaiting_agent",
     }
@@ -151,20 +198,32 @@ def _python() -> str:
     return sys.executable
 
 
-def process_failure_entry(entry: dict[str, Any], *, workspace: Path) -> str:
+def process_failure_entry(entry: dict[str, Any], *, workspace: Path) -> str | None:
     failure_id = entry["failure_id"]
     failure = load_failure_payload(failure_id)
-    manifest = _load_manifest(workspace)
-    base_url = failure.get("environment", {}).get("base_url", "https://seleniumbase.io/demo_page")
+    classification = failure.get("classification") or classify_failure(failure)
+    if not is_healable(failure):
+        reason = f"Not healable ({classification}); skipping locator proposal."
+        mark_failure_not_healable(failure_id, reason=reason)
+        print(f"[skip] {failure_id}: {reason}")
+        return None
 
-    prompt_path = QUEUE_PATCHES / f"{failure_id}-agent-task.md"
+    manifest = _load_manifest(workspace)
+    base_url = failure.get("environment", {}).get("base_url") or ""
+
+    patch_id, json_path, md_path = write_stub_patch(failure, manifest=manifest, workspace=workspace)
+    prompt_path = QUEUE_PATCHES / f"{patch_id}-agent-task.md"
     prompt_path.write_text(
-        build_proposal_prompt(failure, manifest=manifest, base_url=base_url),
+        build_proposal_prompt(
+            failure, manifest=manifest, base_url=base_url, patch_id=patch_id
+        ),
         encoding="utf-8",
     )
 
-    patch_id, json_path, md_path = write_stub_patch(failure, manifest=manifest, workspace=workspace)
     mark_failure_proposed(failure_id, patch_id, patch_json=json_path, patch_md=md_path)
+    from healing.session_state import note_session_patch
+
+    note_session_patch(patch_id)
     return patch_id
 
 
@@ -196,14 +255,18 @@ def main() -> int:
             print(f"Failure not pending or unknown: {args.failure_id}")
             return 1
         patch_id = process_failure_entry(entry, workspace=workspace)
-        print(f"Created patch {patch_id} (stub — complete via Cursor MCP + /healing-propose)")
-        return 0
+        if patch_id:
+            print(f"Created patch {patch_id} (stub — complete via MCP propose runner)")
+        return 0 if patch_id else 0
 
     if args.process_all:
         pending = list_unprocessed_failures()
         for entry in pending:
             patch_id = process_failure_entry(entry, workspace=workspace)
-            print(f"[ok] {entry['failure_id']} → {patch_id}")
+            if patch_id:
+                print(f"[ok] {entry['failure_id']} → {patch_id} (awaiting_agent)")
+            else:
+                print(f"[skip] {entry['failure_id']} (not_healable)")
         return 0
 
     parser.print_help()

@@ -25,9 +25,12 @@ def _file_hash(paths: list[Path]) -> str:
     return digest.hexdigest()[:16]
 
 
-def _locator_expression_from_function(node: ast.FunctionDef) -> str:
+def _locator_expression_from_function(source: str, node: ast.FunctionDef) -> str:
     for child in ast.walk(node):
         if isinstance(child, ast.Return) and child.value is not None:
+            segment = ast.get_source_segment(source, child.value)
+            if segment:
+                return segment.strip()
             try:
                 return ast.unparse(child.value)
             except Exception:
@@ -36,7 +39,8 @@ def _locator_expression_from_function(node: ast.FunctionDef) -> str:
 
 
 def _scan_page_file(path: Path) -> dict[str, Any]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
     classes: dict[str, Any] = {}
     for node in tree.body:
         if not isinstance(node, ast.ClassDef):
@@ -54,7 +58,7 @@ def _scan_page_file(path: Path) -> dict[str, Any]:
                     locators[item.name] = {
                         "line": item.lineno,
                         "kind": "property",
-                        "expression": _locator_expression_from_function(item),
+                        "expression": _locator_expression_from_function(source, item),
                     }
                 elif not item.name.startswith("__"):
                     methods[item.name] = {
@@ -81,8 +85,18 @@ def _infer_locator_deps(func: ast.FunctionDef) -> list[str]:
 
 def _scan_test_file(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
-    pages = sorted(set(re.findall(r"(DemoPage|BasePage)\s*\(", text)))
-    calls = sorted(set(re.findall(r"\bdemo\.([a-z_][a-z0-9_]*)\s*\(", text)))
+    pages = sorted(set(re.findall(r"(\w+Page)\s*\(", text)))
+    skip_fixtures = frozenset(
+        {"self", "page", "path", "re", "json", "pytest", "os", "sys", "print", "open"}
+    )
+    call_pairs = re.findall(r"\b([a-z][a-z0-9_]*)\.([a-z_][a-z0-9_]*)\s*\(", text)
+    calls = sorted(
+        {
+            f"{fixture}.{method}"
+            for fixture, method in call_pairs
+            if fixture not in skip_fixtures and not fixture.startswith("_")
+        }
+    )
     return {
         "file": str(path.as_posix()),
         "page_classes": pages,
@@ -91,23 +105,31 @@ def _scan_test_file(path: Path) -> dict[str, Any]:
 
 
 def build_manifest(workspace: Path) -> dict[str, Any]:
+    from healing.config import load_config
+    from healing.paths import configure_workspace
+
+    configure_workspace(workspace)
+    cfg = load_config(workspace)
+
     paths: list[Path] = []
     pages: dict[str, Any] = {}
-    for page_file in sorted((workspace / "pages").glob("*.py")):
-        if page_file.name.startswith("_") or page_file.name == "__init__.py":
-            continue
-        paths.append(page_file)
-        pages.update(_scan_page_file(page_file))
+    pages_dir = workspace / cfg.pages_dir
+    if pages_dir.exists():
+        for page_file in sorted(pages_dir.glob("*.py")):
+            if page_file.name.startswith("_") or page_file.name == "__init__.py":
+                continue
+            paths.append(page_file)
+            pages.update(_scan_page_file(page_file))
 
     tests: list[dict[str, Any]] = []
-    tests_dir = workspace / "tests"
+    tests_dir = workspace / cfg.tests_dir
     if tests_dir.exists():
         for test_file in sorted(tests_dir.glob("test_*.py")):
             paths.append(test_file)
             tests.append(_scan_test_file(test_file))
 
     data_files: list[str] = []
-    data_dir = workspace / "data"
+    data_dir = workspace / cfg.data_dir
     if data_dir.exists():
         for data_file in sorted(data_dir.rglob("*")):
             if data_file.is_file():
@@ -180,7 +202,9 @@ def main() -> int:
         help="Exit 1 if manifest missing or stale vs current scan.",
     )
     args = parser.parse_args()
-    workspace = args.workspace.resolve()
+    from healing.paths import configure_workspace
+
+    workspace = configure_workspace(args.workspace.resolve())
     manifest = build_manifest(workspace)
     if args.check:
         if not MANIFEST_JSON.exists():
@@ -193,6 +217,9 @@ def main() -> int:
         print("Architecture manifest is up to date.")
         return 0
     json_path, md_path, changed = write_manifest(manifest, workspace)
+    from healing.auto_scan import write_package_version_stamp
+
+    write_package_version_stamp()
     if changed:
         print(f"Wrote {json_path} and {md_path}")
     else:

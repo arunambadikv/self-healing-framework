@@ -2,7 +2,6 @@
 
 thresholds:
   ignore_report_globs:
-    - "*"
     - "missing-key-smoke.json"
     - "*-smoke.json"
     - "test_demo_total_failure.json"
@@ -13,13 +12,10 @@ thresholds:
   repeat_healed_key_warn: 2
   max_unprocessed_failures: 0
   max_patch_ready_without_review: 10
+  max_awaiting_agent: 5
 
 architecture:
   require_manifest: true
-
-registry_lint:
-  enabled: false
-  fail_on_warnings: false
 
 test_policy:
   enabled: true
@@ -27,22 +23,11 @@ test_policy:
   require_pom_usage: true
   allowlist:
     - tests/test_pom_healing_unit.py
+    - tests/test_healing_review_interactive.py
   forbidden_patterns:
     - 'page\.locator\('
     - 'page\.get_by_[a-z_]+\('
     - 'expect\(page\.'
 
-raw_learning:
-  enabled: false
-  mcp_bundles: false
-
 healing_mcp:
   auto_after_test: false
-
-mcp_repair:
-  default_base_url: "https://seleniumbase.io/demo_page"
-  output_dir: "artifacts/mcp-repair-bundles"
-
-pom_healing:
-  failures_dir: "artifacts/failures"
-  queue_dir: "artifacts/healing-queue"

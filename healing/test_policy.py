@@ -10,10 +10,14 @@ DEFAULT_FORBIDDEN = [
     r"expect\(page\.",
 ]
 
-DEFAULT_REQUIRE_POM = [
-    r"\bdemo\.\w+\(",
-    r"DemoPage\s*\(",
-]
+_PAGE_CTOR = re.compile(r"\w+Page\s*\(")
+_PAGE_FIXTURE_ACTION = re.compile(
+    r"\b[a-z][a-z0-9_]*\.(?:goto|click_|fill_|expect_|login|check_|select_|uncheck_|drag_)\w*\s*\("
+)
+
+
+def _uses_page_objects(content: str) -> bool:
+    return bool(_PAGE_CTOR.search(content) or _PAGE_FIXTURE_ACTION.search(content))
 
 
 def _normalize_allowlist(paths: list[Path], workspace: Path) -> set[Path]:
@@ -42,8 +46,6 @@ def check_test_policy(
 
     patterns = forbidden_patterns or DEFAULT_FORBIDDEN
     compiled = [re.compile(p) for p in patterns]
-    pom_usage = re.compile(DEFAULT_REQUIRE_POM[0])
-    demo_page_ctor = re.compile(r"DemoPage\s*\(")
 
     allowed_files = _normalize_allowlist(allowlist, workspace)
 
@@ -62,15 +64,15 @@ def check_test_policy(
             if pattern.search(content):
                 errors.append(
                     f"{rel}: inline Playwright selector in test file ({pattern.pattern}). "
-                    "Use DemoPage methods or add file to test_policy.allowlist."
+                    "Use page object methods or add file to test_policy.allowlist."
                 )
                 break
 
         if require_pom_usage and "def test_" in content:
-            if not pom_usage.search(content) and not demo_page_ctor.search(content):
-                    if "test_pom_healing" not in test_file.name:
-                        warnings.append(
-                            f"{rel}: no DemoPage/demo.* usage detected — ensure POM pattern."
-                        )
+            if not _uses_page_objects(content):
+                if "test_pom_healing" not in test_file.name:
+                    warnings.append(
+                        f"{rel}: no page object usage detected — ensure tests call page fixtures/methods."
+                    )
 
     return errors, warnings
