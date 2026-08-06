@@ -53,7 +53,7 @@ healing-doctor
 pytest tests/ -v
 ```
 
-Optional auto chain after healable locator failures:
+Optional auto chain after healable locator failures (`selector_break` only — network, auth, app regression, etc. are never auto-proposed):
 
 ```bash
 # in .env (loaded automatically — no export needed):

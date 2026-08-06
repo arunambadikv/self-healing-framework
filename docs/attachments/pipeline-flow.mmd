@@ -1,0 +1,16 @@
+flowchart TD
+  A[pytest POM tests] --> B[Auto step trace<br/>playwright_trace]
+  A --> C{Test failed?}
+  C -->|no| Z[Done]
+  C -->|yes| D[Write F-*.json / .md<br/>screenshot + storage_state]
+  D --> E[Classify failure]
+  E -->|selector_break| F[healable]
+  E -->|network / auth / other| G[not_healable]
+  F --> H[architecture_scan<br/>manifest.json]
+  H --> I[pom_propose<br/>P-* stub awaiting_agent]
+  I --> J[mcp_propose_runner<br/>Cursor SDK + Playwright MCP]
+  J --> K[patch_ready]
+  K --> L[healing_review<br/>human: heal / skip / defer]
+  L -->|heal| M[pom_apply → pages/*.py only]
+  M --> N[Re-run test]
+  N --> Z

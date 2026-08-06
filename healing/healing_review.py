@@ -11,6 +11,7 @@ from typing import Any
 
 from healing.healing_queue import (
     get_index_summary,
+    list_deferred,
     list_patch_ready,
     load_failure_payload,
     move_patch_file,
@@ -140,6 +141,7 @@ def write_summary(workspace: Path) -> Path:
     ts = utc_stamp()
     path = QUEUE_SUMMARIES / f"summary-{ts}.md"
     ready = list_patch_ready()
+    deferred = list_deferred()
     lines = [
         "# Healing session summary",
         "",
@@ -154,7 +156,16 @@ def write_summary(workspace: Path) -> Path:
     if ready:
         lines.extend(["## Still awaiting review", ""] + [f"- {e.get('patch_id')}" for e in ready])
     else:
-        lines.append("All patch_ready items have been processed.")
+        lines.append("No `patch_ready` items awaiting review.")
+    if deferred:
+        lines.extend(
+            [
+                "",
+                "## Deferred (re-queue with `--promote P-<id>`)",
+                "",
+            ]
+            + [f"- {e.get('patch_id')}" for e in deferred]
+        )
     path.write_text("\n".join(lines), encoding="utf-8")
     print(f"Wrote {path}")
     return path
@@ -163,6 +174,16 @@ def write_summary(workspace: Path) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Review and apply healing-queue patches.")
     parser.add_argument("--list", action="store_true", help="List patch_ready entries (table view).")
+    parser.add_argument(
+        "--list-deferred",
+        action="store_true",
+        help="List deferred patches (re-queue later with --promote P-<id>).",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON for --list / --list-deferred / --show.",
+    )
     parser.add_argument(
         "--interactive",
         "-i",
@@ -193,6 +214,7 @@ def main() -> int:
     no_action = not any(
         [
             args.list,
+            args.list_deferred,
             args.interactive,
             args.show,
             args.patch,
@@ -213,7 +235,22 @@ def main() -> int:
 
     if args.list:
         ready = list_patch_ready()
-        print(format_patch_list(ready, workspace=workspace))
+        if args.json:
+            print(json.dumps({"status": "patch_ready", "entries": ready}, indent=2, ensure_ascii=True))
+        else:
+            print(format_patch_list(ready, workspace=workspace))
+        return 0
+
+    if args.list_deferred:
+        deferred = list_deferred()
+        if args.json:
+            print(json.dumps({"status": "deferred", "entries": deferred}, indent=2, ensure_ascii=True))
+            return 0
+        if not deferred:
+            print("No deferred patches.")
+            return 0
+        print(format_patch_list(deferred, workspace=workspace))
+        print("\nRe-queue a deferred patch: python -m healing.healing_review --promote P-<id>")
         return 0
 
     if args.promote:
@@ -224,7 +261,10 @@ def main() -> int:
 
     if args.show:
         payload = load_patch(args.show, QUEUE_PATCHES)
-        print(format_patch_for_human(args.show, payload, workspace))
+        if args.json:
+            print(json.dumps({"patch_id": args.show, "payload": payload}, indent=2, ensure_ascii=True))
+        else:
+            print(format_patch_for_human(args.show, payload, workspace))
         return 0
 
     if args.patch and args.decision:

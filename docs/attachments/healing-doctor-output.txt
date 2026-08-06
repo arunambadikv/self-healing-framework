@@ -1,0 +1,18 @@
+Healing doctor
+
+  [OK  ] healing package: importable (.../healing/__init__.py)
+  [OK  ] pytest plugin: pytest11 entry healing → healing.pytest_plugin
+  [OK  ] cursor-sdk: installed (MCP propose ready)
+  [OK  ] chromium: executable at .../ms-playwright/chromium-*/chrome
+  [OK  ] npx (Node): .../bin/npx
+  [OK  ] mcp.json: .cursor/mcp.json
+  [OK  ] CURSOR_API_KEY: set (env or .env)
+  [OK  ] healing.toml: healer-artifacts/healing.toml
+  [OK  ] artifact dirs: healer-artifacts/ (failures present)
+  [OK  ] skills: 5 skills via workspace .cursor/skills
+
+Summary: 0 error(s), 0 warning(s)
+Note: Cursor Settings → MCP is only for interactive IDE use.
+      CLI mcp_propose_runner starts Playwright MCP via stdio on its own.
+Note: architecture-discovery runs automatically on healing-init and on the next
+      pytest after a package install/update (or when the manifest is stale).

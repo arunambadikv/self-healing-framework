@@ -7,16 +7,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from healing.paths import MANIFEST_JSON
 
 
 def _load_healing_config(workspace: Path) -> dict[str, Any]:
-    config_path = workspace / "healing" / "ci_gates_config.yaml"
-    if not config_path.exists():
-        return {}
-    return yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    from healing.gates_config import load_healing_yaml
+
+    return load_healing_yaml(workspace)
 
 
 def is_auto_enabled(workspace: Path | None = None) -> bool:
@@ -150,17 +147,20 @@ def should_run_post_test_chain(workspace: Path | None = None) -> bool:
     return session_had_healable_failures()
 
 
-def run_post_test_chain(workspace: Path | None = None) -> None:
-    """Run optional post-test healing steps when HEALING_MCP_AUTO=1 or config flag set."""
+def run_post_test_chain(workspace: Path | None = None) -> int:
+    """Run optional post-test healing steps when HEALING_MCP_AUTO=1 or config flag set.
+
+    Returns 0 on success / skip, non-zero when a chain step failed.
+    """
     workspace = (workspace or Path.cwd()).resolve()
     if not is_auto_enabled(workspace):
-        return
+        return 0
     if not should_run_post_test_chain(workspace):
         print(
             "\n[healing] HEALING_MCP_AUTO enabled — skipping post-test chain "
             "(no healable locator failures captured this session)"
         )
-        return
+        return 0
     print("\n[healing] HEALING_MCP_AUTO enabled — running post-test chain (this session only)")
     steps = (
         ("architecture_scan", run_architecture_scan_if_needed),
@@ -174,3 +174,5 @@ def run_post_test_chain(workspace: Path | None = None) -> None:
             failed.append(name)
     if failed:
         print(f"[healing] post-test chain completed with errors: {', '.join(failed)}")
+        return 1
+    return 0

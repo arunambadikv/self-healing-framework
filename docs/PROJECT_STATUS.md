@@ -1,6 +1,6 @@
 # Project Status
 
-> **Last updated:** 2026-08-04  
+> **Last updated:** 2026-08-06  
 > **Branch:** `dev`  
 > **Repo:** [arunambadikv/self-healing-framework](https://github.com/arunambadikv/self-healing-framework)
 
@@ -8,6 +8,7 @@
 
 Playwright Python POM healing framework, now **installable** (`pip install -e ".[mcp]"` / git URL) with `/healing-init` for consumer frameworks. Tests use page-object fixtures; locator failures are captured automatically, classified, queued, and repaired through propose → MCP verify → human review → apply. **Human review is required** before any change lands in `pages/*.py` (decision once; agent executes with `--yes`).
 
+**Hardening (2026-08):** apply validation allowlist + rollback; patch structure/`before` source checks; packaged `ci_gates_config.yaml` for pip consumers; pinned `@playwright/mcp@0.0.79`; queue `fcntl` lock + atomic index writes; `--json` / `--list-deferred` CLIs; doctor pages/.env checks.
 **Target app:** configurable via `HEALING_BASE_URL` (default: OrangeHRM demo login). Opt-in healing demos in `tests/test_orangehrm_healing.py` and `tests/test_saucedemo_healing.py`.
 
 **Current focus:** `dev` has the MCP propose runner and failure-gated `HEALING_MCP_AUTO` chain; merge to `main` via PR when CI is green.
@@ -30,9 +31,14 @@ Playwright Python POM healing framework, now **installable** (`pip install -e ".
 | Human review + apply | Done | `healing/healing_review.py` (`--yes`, screenshots, deferred) |
 | Installable package + init | Done | `pyproject.toml`, `healing/init.py`, `/healing-init` |
 | Consumer setup guide + doctor | Done | [docs/CONSUMER_SETUP.md](CONSUMER_SETUP.md), `healing-doctor` |
+| QA Chapters Confluence pack | Done | [docs/CONFLUENCE_QA_CHAPTERS.md](CONFLUENCE_QA_CHAPTERS.md) + [docs/attachments/](attachments/) |
 | CI: test → propose-on-failure → gates | Done | `.github/workflows/healing-ci.yml` (incl. `dev`) |
 | Remote pipeline E2E | Done | `.github/workflows/healing-pipeline-e2e.yml` |
 | Healing flow demo tests | Done | OrangeHRM + SauceDemo (+ inventory auth) |
+| Apply allowlist + rollback | Done | `healing/pom_apply.py` (no `shell=True`) |
+| Patch validators + source `before` check | Done | `healing/patch_validate.py` |
+| Packaged gate/MCP config for consumers | Done | `healing/gates_config.py` + package data |
+| Queue lock + deferred listing | Done | `healing_queue` flock; `--list-deferred` |
 | Auto-apply without review | Out of scope | By design |
 | Legacy SmartPage / registry | Retired | Removed; locators live on page objects only |
 | PyPI publish | Later | Git/editable install first |
@@ -185,6 +191,7 @@ pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run
 
 | Date | Change |
 |------|--------|
+| 2026-08-06 | High/medium hardening: apply security, patch validate, MCP pin, package config, queue lock, DX CLIs |
 | 2026-07-22 | Always create new stubs per failure; MCP/review prefer latest patch (newest-first; one MCP per architecture_ref) |
 | 2026-07-22 | Auto chain scoped to this session's failures + newly created stubs; classifier treats chrome-error/goto as non-healable |
 | 2026-06-09 | Added `docs/PROJECT_STATUS.md`; documented MCP propose pipeline and failure-gated `HEALING_MCP_AUTO` on `dev` |

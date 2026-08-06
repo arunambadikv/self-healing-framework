@@ -47,7 +47,9 @@ def _load_mcp_servers(
 
     mcp_path = workspace / ".cursor" / "mcp.json"
     command = "npx"
-    args: list[str] = ["@playwright/mcp@latest"]
+    from healing.mcp_constants import PLAYWRIGHT_MCP_PACKAGE
+
+    args: list[str] = [PLAYWRIGHT_MCP_PACKAGE]
     env: dict[str, str] = {}
 
     if mcp_path.exists():
@@ -144,12 +146,17 @@ def run_sdk_propose(
 ) -> str:
     from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
 
+    from healing.mcp_constants import DEFAULT_MCP_MODEL
+
+    model = os.environ.get("HEALING_MCP_MODEL", "").strip() or DEFAULT_MCP_MODEL
     mcp_servers = _load_mcp_servers(workspace, storage_state=storage_state)
+    # Agent.prompt is synchronous; incomplete patches fail closed after return
+    # (see is_patch_complete with check_source). No separate SDK timeout API is wired.
     result = Agent.prompt(
         prompt,
         AgentOptions(
             api_key=api_key,
-            model="composer-2.5",
+            model=model,
             local=LocalAgentOptions(cwd=str(workspace)),
             mcp_servers=mcp_servers,
         ),
@@ -172,7 +179,7 @@ def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str 
 
     payload = json.loads(patch_path.read_text(encoding="utf-8"))
     proposal = payload.get("proposal") or payload
-    if is_patch_complete(proposal):
+    if is_patch_complete(proposal, workspace=workspace, check_source=True):
         from healing.patch_promote import promote_patch
 
         promote_patch(patch_id)
@@ -219,8 +226,14 @@ def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str 
 
     payload = json.loads(patch_path.read_text(encoding="utf-8"))
     proposal = payload.get("proposal") or payload
-    if not is_patch_complete(proposal):
-        print(f"[error] {patch_id} still incomplete after agent run (TODO remains)")
+    if not is_patch_complete(proposal, workspace=workspace, check_source=True):
+        from healing.patch_validate import validate_proposal
+
+        errs = validate_proposal(proposal, workspace=workspace, check_source=True)
+        print(
+            f"[error] {patch_id} still incomplete after agent run: "
+            + ("; ".join(errs) if errs else "TODO remains")
+        )
         return False
 
     from healing.patch_promote import promote_patch
@@ -236,6 +249,7 @@ def main() -> int:
     parser.add_argument("--process-all", action="store_true", help="Process all awaiting_agent patches.")
     parser.add_argument("--patch-id", help="Process single patch id.")
     parser.add_argument("--workspace", default=".", type=Path)
+    parser.add_argument("--json", action="store_true", help="Emit JSON for --list.")
     args = parser.parse_args()
     workspace = args.workspace.resolve()
     ensure_queue_dirs()
@@ -246,6 +260,9 @@ def main() -> int:
 
     if args.list:
         awaiting = list_awaiting_agent()
+        if args.json:
+            print(json.dumps({"status": "awaiting_agent", "entries": awaiting}, indent=2, ensure_ascii=True))
+            return 0
         if not awaiting:
             print("No patches awaiting agent.")
             return 0

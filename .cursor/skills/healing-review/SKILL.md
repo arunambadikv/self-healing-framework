@@ -43,7 +43,7 @@ python -m healing.healing_review --list
    - Use **AskQuestion** (or equivalent) with options:
      - **Heal** — apply patch now
      - **Skip** — reject (include a short reason in the same choice when possible)
-     - **Defer** — mark deferred (leaves `patch_ready`)
+     - **Defer** — mark deferred (status → `deferred`; re-queue later with `--promote` or list via `--list-deferred`)
      - **Show failure report** — read `healer-artifacts/failures/F-*.md` (+ screenshot) and re-ask
      - **Dry run** — preview only, then re-ask
 4. **Immediately** execute the user's choice (no “should I run this?”):

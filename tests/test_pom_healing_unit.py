@@ -124,6 +124,15 @@ def test_mark_patch_ready_promotes_status(tmp_path: Path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     configure_workspace(tmp_path)
     ensure_queue_dirs()
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "demo_page.py").write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def green_button(self):\n"
+        "        return self.page.get_by_role('button', name='old')\n",
+        encoding="utf-8",
+    )
     failure_id = "F-testpatch01"
     patch_id = "P-testpatch01"
     payload = {
@@ -154,8 +163,8 @@ def test_mark_patch_ready_promotes_status(tmp_path: Path, monkeypatch):
                         {
                             "file": "pages/demo_page.py",
                             "symbol": "green_button",
-                            "before": "return self.page.get_by_role('button', name='old')",
-                            "after": "return self.page.get_by_role('button', name='new')",
+                            "before": "self.page.get_by_role('button', name='old')",
+                            "after": "self.page.get_by_role('button', name='new')",
                         }
                     ],
                 }
@@ -268,17 +277,38 @@ def test_is_patch_complete_rejects_todo():
             "architecture_updates": [{"after": "TODO: replace with MCP-verified Playwright expression"}],
         }
     )
+    complete_update = {
+        "file": "pages/demo_page.py",
+        "symbol": "green_button",
+        "before": "self.page.get_by_role('button', name='old')",
+        "after": "self.page.get_by_role('button', name='Go')",
+    }
     assert is_patch_complete(
         {
             "proposal_status": "complete",
-            "architecture_updates": [{"after": "return self.page.get_by_role('button', name='Go')"}],
+            "architecture_updates": [complete_update],
         }
     )
     assert is_patch_complete(
         {
             "proposal_status": "awaiting_agent",
             "architecture_updates": [
-                {"after": "return self.page.get_by_role('button', name='Click Me (Green)')"}
+                {
+                    **complete_update,
+                    "after": "self.page.get_by_role('button', name='Click Me (Green)')",
+                }
+            ],
+        }
+    )
+    assert not is_patch_complete(
+        {
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "green_button",
+                    "before": "self.page.get_by_role('button', name='old')",
+                    "after": "TODO: still pending",
+                }
             ],
         }
     )
@@ -290,6 +320,15 @@ def test_promote_patch_skill_path_parity(tmp_path: Path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     configure_workspace(tmp_path)
     ensure_queue_dirs()
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "demo_page.py").write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def healing_demo_green_button(self):\n"
+        "        return self.page.get_by_role('button', name='Click Me (Blue)')\n",
+        encoding="utf-8",
+    )
     failure_id = "F-promote01"
     patch_id = "P-promote01"
     payload = {
@@ -320,8 +359,8 @@ def test_promote_patch_skill_path_parity(tmp_path: Path, monkeypatch):
                         {
                             "file": "pages/demo_page.py",
                             "symbol": "healing_demo_green_button",
-                            "before": "return self.page.get_by_role('button', name='Click Me (Blue)')",
-                            "after": "return self.page.get_by_role('button', name='Click Me (Green)')",
+                            "before": "self.page.get_by_role('button', name='Click Me (Blue)')",
+                            "after": "self.page.get_by_role('button', name='Click Me (Green)')",
                         }
                     ],
                 }
@@ -365,7 +404,6 @@ def test_ci_gates_skip_queue_gates(tmp_path: Path, monkeypatch):
         workspace=tmp_path,
         config=config,
         reports_dir=tmp_path / "healer-artifacts" / "healing-reports",
-        registry_path=tmp_path / "locator_registry.yaml",
         tests_dir=tmp_path / "tests",
         skip_queue_gates=True,
     )
@@ -376,7 +414,6 @@ def test_ci_gates_skip_queue_gates(tmp_path: Path, monkeypatch):
         workspace=tmp_path,
         config=config,
         reports_dir=tmp_path / "healer-artifacts" / "healing-reports",
-        registry_path=tmp_path / "locator_registry.yaml",
         tests_dir=tmp_path / "tests",
         skip_queue_gates=False,
     )
@@ -895,4 +932,449 @@ def test_find_chromium_executable_scans_cache(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "ms-playwright"))
     found = find_chromium_executable()
     assert found == chrome
+
+
+def test_patch_validate_rejects_todo_and_stale_before(tmp_path: Path, monkeypatch):
+    from healing.patch_validate import validate_proposal
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "demo_page.py").write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def btn(self):\n"
+        "        return self.page.get_by_role('button', name='live')\n",
+        encoding="utf-8",
+    )
+    bad = validate_proposal(
+        {
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "btn",
+                    "before": "self.page.get_by_role('button', name='stale')",
+                    "after": "self.page.get_by_role('button', name='new')",
+                }
+            ]
+        },
+        workspace=tmp_path,
+        check_source=True,
+    )
+    assert bad
+    assert any("does not match" in e or "not found" in e for e in bad)
+    todo_errs = validate_proposal(
+        {
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "btn",
+                    "before": "self.page.get_by_role('button', name='live')",
+                    "after": "TODO: fix me",
+                }
+            ]
+        }
+    )
+    assert any("TODO" in e for e in todo_errs)
+    ok = validate_proposal(
+        {
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "btn",
+                    "before": "self.page.get_by_role('button', name='live')",
+                    "after": "self.page.get_by_role('button', name='new')",
+                }
+            ]
+        },
+        workspace=tmp_path,
+        check_source=True,
+    )
+    assert ok == []
+
+
+def test_load_healing_yaml_falls_back_to_package(tmp_path: Path):
+    from healing.gates_config import load_healing_yaml
+
+    # No workspace healing/ci_gates_config.yaml
+    data = load_healing_yaml(tmp_path)
+    assert "thresholds" in data or "healing_mcp" in data or "test_policy" in data
+
+
+def test_manifest_uses_relative_file_paths(tmp_path: Path, monkeypatch):
+    from healing.architecture_scan import build_manifest
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "demo_page.py").write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def btn(self):\n"
+        "        return self.page.locator('#x')\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text(
+        "def test_x(demo_page):\n    demo_page.btn.click()\n",
+        encoding="utf-8",
+    )
+    manifest = build_manifest(tmp_path)
+    page_file = manifest["pages"]["DemoPage"]["file"]
+    assert page_file == "pages/demo_page.py"
+    assert not page_file.startswith("/")
+    test_file = manifest["tests"][0]["file"]
+    assert test_file == "tests/test_demo.py"
+
+
+def test_list_deferred_and_queue_lock_roundtrip(tmp_path: Path, monkeypatch):
+    from healing.healing_queue import list_deferred, update_patch_status
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    ensure_queue_dirs()
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "demo_page.py").write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def green_button(self):\n"
+        "        return self.page.get_by_role('button', name='old')\n",
+        encoding="utf-8",
+    )
+    failure_id = "F-defer01"
+    patch_id = "P-defer01"
+    json_path = FAILURES_DIR / f"{failure_id}.json"
+    md_path = FAILURES_DIR / f"{failure_id}.md"
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps({"failure_id": failure_id}), encoding="utf-8")
+    md_path.write_text("# f", encoding="utf-8")
+    register_failure(failure_id, json_path=json_path, md_path=md_path)
+    patch_json = tmp_path / "healer-artifacts/healing-queue/patches" / f"{patch_id}.json"
+    patch_json.parent.mkdir(parents=True, exist_ok=True)
+    patch_json.write_text(
+        json.dumps(
+            {
+                "proposal": {
+                    "architecture_updates": [
+                        {
+                            "file": "pages/demo_page.py",
+                            "symbol": "green_button",
+                            "before": "self.page.get_by_role('button', name='old')",
+                            "after": "self.page.get_by_role('button', name='new')",
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    patch_md = patch_json.with_suffix(".md")
+    patch_md.write_text("# p", encoding="utf-8")
+    mark_failure_proposed(failure_id, patch_id, patch_json=patch_json, patch_md=patch_md)
+    mark_patch_ready(patch_id)
+    update_patch_status(patch_id, "deferred", notes="later")
+    deferred = list_deferred()
+    assert any(e.get("patch_id") == patch_id for e in deferred)
+
+
+def test_validation_command_allowlist():
+    from healing.pom_apply import is_validation_command_allowed, parse_validation_command
+
+    assert is_validation_command_allowed(["pytest", "tests/t.py", "-q"])
+    assert is_validation_command_allowed(["python", "-m", "pytest", "tests/t.py"])
+    assert is_validation_command_allowed(["python", "-m", "healing.ci_gates"])
+    assert not is_validation_command_allowed(["bash", "-c", "rm -rf /"])
+    assert not is_validation_command_allowed(["curl", "http://evil"])
+    parse_validation_command("pytest tests/t.py -q")
+    try:
+        parse_validation_command("rm -rf /tmp/x")
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "allowlisted" in str(exc)
+
+
+def test_apply_patch_rolls_back_on_validation_failure(tmp_path: Path, monkeypatch):
+    from healing.pom_apply import apply_patch_payload
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    page_file = pages / "demo_page.py"
+    original = (
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def login_button(self):\n"
+        '        return self.page.get_by_role("button", name="OLD")\n'
+    )
+    page_file.write_text(original, encoding="utf-8")
+    payload = {
+        "proposal": {
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "login_button",
+                    "before": 'self.page.get_by_role("button", name="OLD")',
+                    "after": 'self.page.get_by_role("button", name="NEW")',
+                }
+            ],
+            "validation_command": "pytest tests/does_not_exist_xyz.py -q",
+        }
+    }
+    try:
+        apply_patch_payload(payload, workspace=tmp_path, dry_run=False, run_validation=True)
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        assert "Validation failed" in str(exc)
+    assert page_file.read_text(encoding="utf-8") == original
+
+
+def test_apply_prefers_symbol_property_update(tmp_path: Path, monkeypatch):
+    from healing.pom_apply import apply_patch_payload
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    page_file = pages / "demo_page.py"
+    page_file.write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def login_button(self):\n"
+        '        return self.page.get_by_role("button", name="OLD")\n',
+        encoding="utf-8",
+    )
+    payload = {
+        "proposal": {
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "login_button",
+                    "before": "WRONG_BEFORE_NOT_IN_FILE",
+                    "after": 'self.page.get_by_role("button", name="NEW")',
+                }
+            ],
+        }
+    }
+    messages = apply_patch_payload(
+        payload, workspace=tmp_path, dry_run=False, run_validation=False
+    )
+    assert any("Updated property" in m for m in messages)
+    assert 'name="NEW"' in page_file.read_text(encoding="utf-8")
+
+
+def test_ci_gates_warn_mode_does_not_fail(tmp_path: Path, monkeypatch):
+    from healing.ci_gates import GateConfig, run_ci_gates
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_raw.py").write_text(
+        "def test_raw(page):\n    page.locator('#x').click()\n",
+        encoding="utf-8",
+    )
+    config = GateConfig(
+        test_policy_enabled=True,
+        test_policy_raw_mode="warn",
+        require_architecture_manifest=False,
+        max_unprocessed_failures=999,
+        require_pom_usage=False,
+    )
+    exit_code, errors, warnings = run_ci_gates(
+        workspace=tmp_path,
+        config=config,
+        reports_dir=tmp_path / "healer-artifacts" / "healing-reports",
+        tests_dir=tests_dir,
+        skip_queue_gates=True,
+    )
+    assert exit_code == 0
+    assert not errors
+    assert warnings
+
+
+def test_mocked_pipeline_capture_stub_promote_apply(tmp_path: Path, monkeypatch):
+    """End-to-end without live MCP: register → stub → complete → promote → apply."""
+    from healing.healing_queue import list_patch_ready
+    from healing.patch_promote import promote_patch
+    from healing.pom_apply import apply_patch_payload
+    from healing.pom_propose import process_failure_entry
+    from healing.paths import QUEUE_PATCHES
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    ensure_queue_dirs()
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    page_file = pages / "demo_page.py"
+    page_file.write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def login_button(self):\n"
+        '        return self.page.get_by_role("button", name="OLD")\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "tests").mkdir()
+    failure_id = "F-pipe01"
+    payload = {
+        "failure_id": failure_id,
+        "processed": False,
+        "healable": True,
+        "classification": "selector_break",
+        "architecture_ref": "DemoPage.login_button",
+        "test": {"nodeid": "tests/t.py::test_x", "file": "tests/t.py", "name": "test_x"},
+        "error": {
+            "type": "TimeoutError",
+            "message": "Locator.click: Timeout",
+            "playwright_hint": {"kind": "locator"},
+        },
+        "failing_step": {
+            "page_class": "DemoPage",
+            "locator_id": "login_button",
+            "method": "click_login",
+        },
+        "environment": {"page_url": "https://example.com/login", "base_url": "https://example.com"},
+    }
+    json_path = FAILURES_DIR / f"{failure_id}.json"
+    md_path = FAILURES_DIR / f"{failure_id}.md"
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps(payload), encoding="utf-8")
+    md_path.write_text("# fail", encoding="utf-8")
+    register_failure(failure_id, json_path=json_path, md_path=md_path)
+
+    # Manifest for propose
+    from healing.architecture_scan import build_manifest, write_manifest
+
+    write_manifest(build_manifest(tmp_path), tmp_path)
+
+    entry = list_unprocessed_failures()[0]
+    patch_id = process_failure_entry(entry, workspace=tmp_path)
+    assert patch_id
+
+    patch_path = QUEUE_PATCHES / f"{patch_id}.json"
+    patch = json.loads(patch_path.read_text(encoding="utf-8"))
+    proposal = patch["proposal"]
+    update = proposal["architecture_updates"][0]
+    update["after"] = 'self.page.get_by_role("button", name="NEW")'
+    proposal["proposal_status"] = "complete"
+    proposal["validation_command"] = "pytest -q --collect-only"
+    patch_path.write_text(json.dumps(patch, indent=2), encoding="utf-8")
+
+    promote_patch(patch_id)
+    assert list_patch_ready()
+
+    messages = apply_patch_payload(
+        patch, workspace=tmp_path, dry_run=False, run_validation=False
+    )
+    assert any("Updated property" in m or "Replaced" in m for m in messages)
+    assert 'name="NEW"' in page_file.read_text(encoding="utf-8")
+
+
+def test_mcp_propose_runner_with_mocked_agent(tmp_path: Path, monkeypatch):
+    import sys
+    from types import ModuleType
+
+    from healing.mcp_propose_runner import process_patch_entry
+    from healing.paths import QUEUE_PATCHES
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    ensure_queue_dirs()
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "demo_page.py").write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def btn(self):\n"
+        "        return self.page.locator('#old')\n",
+        encoding="utf-8",
+    )
+    failure_id = "F-mcp01"
+    patch_id = "P-mcp01"
+    json_path = FAILURES_DIR / f"{failure_id}.json"
+    md_path = FAILURES_DIR / f"{failure_id}.md"
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(
+        json.dumps(
+            {
+                "failure_id": failure_id,
+                "architecture_ref": "DemoPage.btn",
+                "artifacts": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    md_path.write_text("# f", encoding="utf-8")
+    register_failure(failure_id, json_path=json_path, md_path=md_path)
+
+    patch_path = QUEUE_PATCHES / f"{patch_id}.json"
+    patch_path.parent.mkdir(parents=True, exist_ok=True)
+    stub = {
+        "proposal": {
+            "patch_id": patch_id,
+            "failure_id": failure_id,
+            "proposal_status": "awaiting_agent",
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "btn",
+                    "before": "self.page.locator('#old')",
+                    "after": "TODO: replace",
+                }
+            ],
+        }
+    }
+    patch_path.write_text(json.dumps(stub), encoding="utf-8")
+    (QUEUE_PATCHES / f"{patch_id}.md").write_text("# task", encoding="utf-8")
+    (QUEUE_PATCHES / f"{patch_id}-agent-task.md").write_text("# agent", encoding="utf-8")
+    mark_failure_proposed(
+        failure_id,
+        patch_id,
+        patch_json=patch_path,
+        patch_md=QUEUE_PATCHES / f"{patch_id}.md",
+    )
+
+    def fake_prompt(prompt, options):
+        data = json.loads(patch_path.read_text(encoding="utf-8"))
+        data["proposal"]["architecture_updates"][0]["after"] = "self.page.locator('#new')"
+        data["proposal"]["proposal_status"] = "complete"
+        patch_path.write_text(json.dumps(data), encoding="utf-8")
+
+        class Result:
+            status = "ok"
+            result = "done"
+
+        return Result()
+
+    class FakeAgent:
+        prompt = staticmethod(fake_prompt)
+
+    class FakeOptions:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeLocal:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeStdio:
+        def __init__(self, **kwargs):
+            pass
+
+    fake_mod = ModuleType("cursor_sdk")
+    fake_mod.Agent = FakeAgent
+    fake_mod.AgentOptions = FakeOptions
+    fake_mod.LocalAgentOptions = FakeLocal
+    fake_mod.StdioMcpServerConfig = FakeStdio
+    monkeypatch.setitem(sys.modules, "cursor_sdk", fake_mod)
+
+    entry = {"patch_id": patch_id, "failure_id": failure_id}
+    ok = process_patch_entry(entry, workspace=tmp_path, api_key="cursor_test")
+    assert ok is True
+    from healing.healing_queue import list_patch_ready
+
+    assert any(e.get("patch_id") == patch_id for e in list_patch_ready())
 

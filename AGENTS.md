@@ -66,7 +66,7 @@ pip install -r requirements.txt   # includes cursor-sdk
 pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run-healing-demo -v
 # → healer-artifacts/failures/F-test_orangehrm_broken_login_button-20260801-123456.json + .md
 # → classification: selector_break | network | app_regression | auth_failure | ...
-# → non-healable failures marked not_healable in queue index
+# → only selector_break is healable; others marked not_healable in queue index
 ```
 
 ### 2. Refresh architecture context

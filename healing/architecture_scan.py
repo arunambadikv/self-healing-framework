@@ -38,9 +38,13 @@ def _locator_expression_from_function(source: str, node: ast.FunctionDef) -> str
     return ""
 
 
-def _scan_page_file(path: Path) -> dict[str, Any]:
+def _scan_page_file(path: Path, workspace: Path) -> dict[str, Any]:
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
+    try:
+        rel_file = str(path.resolve().relative_to(workspace.resolve()).as_posix())
+    except ValueError:
+        rel_file = str(path.as_posix())
     classes: dict[str, Any] = {}
     for node in tree.body:
         if not isinstance(node, ast.ClassDef):
@@ -66,7 +70,7 @@ def _scan_page_file(path: Path) -> dict[str, Any]:
                         "locator_deps": _infer_locator_deps(item),
                     }
         classes[node.name] = {
-            "file": str(path.as_posix()),
+            "file": rel_file,
             "locators": locators,
             "methods": methods,
         }
@@ -83,7 +87,7 @@ def _infer_locator_deps(func: ast.FunctionDef) -> list[str]:
     return sorted(set(deps))
 
 
-def _scan_test_file(path: Path) -> dict[str, Any]:
+def _scan_test_file(path: Path, workspace: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     pages = sorted(set(re.findall(r"(\w+Page)\s*\(", text)))
     skip_fixtures = frozenset(
@@ -97,8 +101,12 @@ def _scan_test_file(path: Path) -> dict[str, Any]:
             if fixture not in skip_fixtures and not fixture.startswith("_")
         }
     )
+    try:
+        rel_file = str(path.resolve().relative_to(workspace.resolve()).as_posix())
+    except ValueError:
+        rel_file = str(path.as_posix())
     return {
-        "file": str(path.as_posix()),
+        "file": rel_file,
         "page_classes": pages,
         "page_method_calls": calls,
     }
@@ -119,14 +127,14 @@ def build_manifest(workspace: Path) -> dict[str, Any]:
             if page_file.name.startswith("_") or page_file.name == "__init__.py":
                 continue
             paths.append(page_file)
-            pages.update(_scan_page_file(page_file))
+            pages.update(_scan_page_file(page_file, workspace))
 
     tests: list[dict[str, Any]] = []
     tests_dir = workspace / cfg.tests_dir
     if tests_dir.exists():
         for test_file in sorted(tests_dir.glob("test_*.py")):
             paths.append(test_file)
-            tests.append(_scan_test_file(test_file))
+            tests.append(_scan_test_file(test_file, workspace))
 
     data_files: list[str] = []
     data_dir = workspace / cfg.data_dir

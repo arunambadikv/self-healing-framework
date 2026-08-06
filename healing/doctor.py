@@ -213,6 +213,45 @@ def _check_config(workspace: Path) -> CheckResult:
     )
 
 
+def _check_pages_dir(workspace: Path) -> CheckResult:
+    from healing.config import load_config
+    from healing.paths import configure_workspace
+
+    configure_workspace(workspace)
+    cfg = load_config(workspace)
+    pages = workspace / cfg.pages_dir
+    if pages.is_dir() and any(pages.glob("*.py")):
+        return CheckResult("pages dir", "ok", f"{cfg.pages_dir}/ with Python page objects")
+    if pages.is_dir():
+        return CheckResult("pages dir", "warn", f"{cfg.pages_dir}/ exists but has no .py files")
+    return CheckResult("pages dir", "warn", f"{cfg.pages_dir}/ missing — create page objects or run healing-init")
+
+
+def _check_env_not_tracked(workspace: Path) -> CheckResult:
+    env_path = workspace / ".env"
+    if not env_path.is_file():
+        return CheckResult(".env tracked", "ok", "no .env file (or not present yet)")
+    git = shutil.which("git")
+    if not git:
+        return CheckResult(".env tracked", "ok", ".env present (git not available to verify)")
+    try:
+        tracked = subprocess.run(
+            [git, "-C", str(workspace), "ls-files", "--error-unmatch", ".env"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if tracked.returncode == 0:
+            return CheckResult(
+                ".env tracked",
+                "warn",
+                ".env is tracked by git — remove it from the index and rely on .env.example",
+            )
+        return CheckResult(".env tracked", "ok", ".env present and not tracked by git")
+    except Exception as exc:
+        return CheckResult(".env tracked", "warn", f"could not check git tracking: {exc}")
+
+
 def _check_artifact_dirs(workspace: Path) -> CheckResult:
     from healing.config import load_config
     from healing.paths import configure_workspace, FAILURES_DIR
@@ -241,20 +280,24 @@ def _check_skills(workspace: Path) -> CheckResult:
 
 
 def verify_playwright_mcp(*, timeout_sec: float = 60.0) -> CheckResult:
-    """Optional live check: npx can resolve @playwright/mcp."""
+    """Optional live check: npx can resolve the pinned @playwright/mcp package."""
+    from healing.mcp_constants import PLAYWRIGHT_MCP_PACKAGE
+
     npx = shutil.which("npx")
     if not npx:
         return CheckResult("playwright MCP", "warn", "skipped — npx not available")
     try:
         proc = subprocess.run(
-            [npx, "--yes", "@playwright/mcp@latest", "--help"],
+            [npx, "--yes", PLAYWRIGHT_MCP_PACKAGE, "--help"],
             capture_output=True,
             text=True,
             timeout=timeout_sec,
             check=False,
         )
         if proc.returncode == 0:
-            return CheckResult("playwright MCP", "ok", "npx @playwright/mcp@latest responded")
+            return CheckResult(
+                "playwright MCP", "ok", f"npx {PLAYWRIGHT_MCP_PACKAGE} responded"
+            )
         err = (proc.stderr or proc.stdout or "").strip()[:200]
         return CheckResult("playwright MCP", "warn", f"npx mcp help failed: {err or proc.returncode}")
     except subprocess.TimeoutExpired:
@@ -279,7 +322,9 @@ def run_doctor(
         lambda: _check_mcp_json(workspace),
         lambda: _check_api_key(workspace),
         lambda: _check_config(workspace),
+        lambda: _check_pages_dir(workspace),
         lambda: _check_artifact_dirs(workspace),
+        lambda: _check_env_not_tracked(workspace),
         lambda: _check_skills(workspace),
     ]
     results = [fn() for fn in checks]
@@ -316,7 +361,7 @@ def main() -> int:
     parser.add_argument(
         "--verify-mcp",
         action="store_true",
-        help="Run npx @playwright/mcp@latest --help (may download; needs network).",
+        help="Run npx for the pinned @playwright/mcp package --help (may download; needs network).",
     )
     parser.add_argument(
         "--strict",

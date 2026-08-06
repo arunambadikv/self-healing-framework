@@ -27,7 +27,7 @@ def promote_all_complete() -> list[str]:
         try:
             payload = load_patch(patch_id, QUEUE_PATCHES)
             proposal = payload.get("proposal") or payload
-            if not is_patch_complete(proposal):
+            if not is_patch_complete(proposal, check_source=True):
                 continue
             promote_patch(patch_id)
             promoted.append(patch_id)

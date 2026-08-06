@@ -6,7 +6,8 @@ Page Object Model tests (`pages/*.py`) with **fail-fast** execution and a **post
 
 **Consumer setup (install, init, doctor, requirements):** [docs/CONSUMER_SETUP.md](docs/CONSUMER_SETUP.md)  
 **Operator guide:** [AGENTS.md](AGENTS.md)  
-**Project status:** [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)
+**Project status:** [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)  
+**QA Chapters / Confluence pack:** [docs/CONFLUENCE_QA_CHAPTERS.md](docs/CONFLUENCE_QA_CHAPTERS.md) (+ [docs/attachments/](docs/attachments/))
 
 ## Installation
 

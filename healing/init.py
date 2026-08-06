@@ -71,10 +71,12 @@ def _write_mcp_stub(workspace: Path, *, force: bool = False) -> str | None:
     if src.exists():
         shutil.copy2(src, dest)
     else:
+        from healing.mcp_constants import PLAYWRIGHT_MCP_PACKAGE
+
         dest.write_text(
             '{\n  "mcpServers": {\n    "playwright": {\n'
             '      "command": "npx",\n'
-            '      "args": ["@playwright/mcp@latest"]\n'
+            f'      "args": ["{PLAYWRIGHT_MCP_PACKAGE}"]\n'
             "    }\n  }\n}\n",
             encoding="utf-8",
         )
@@ -157,7 +159,7 @@ def main() -> int:
     parser.add_argument(
         "--verify-mcp",
         action="store_true",
-        help="With doctor: also run npx @playwright/mcp@latest --help.",
+        help="With doctor: also run npx for the pinned @playwright/mcp package --help.",
     )
     args = parser.parse_args()
 

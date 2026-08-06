@@ -1,0 +1,30 @@
+flowchart TB
+  subgraph Package["healing package (pip)"]
+    Plugin[pytest plugin + playwright_trace]
+    Scan[architecture_scan]
+    Propose[pom_propose / mcp_propose]
+    Review[healing_review / pom_apply]
+    Doctor[healing-doctor / healing-init]
+  end
+
+  subgraph Consumer["Consumer POM repo"]
+    Pages[pages/*.py]
+    Tests[tests/]
+    Artifacts[healer-artifacts/]
+    Skills[.cursor/skills + mcp.json]
+  end
+
+  Pages --> Scan
+  Tests --> Scan
+  Scan --> Manifest[manifest.json / .md]
+  Manifest --> Artifacts
+
+  Tests --> Plugin
+  Plugin -->|F-* + screenshot| Artifacts
+  Manifest --> Propose
+  Artifacts --> Propose
+  Propose -->|P-* patches| Artifacts
+  Artifacts --> Review
+  Review -->|apply locator| Pages
+  Doctor --> Artifacts
+  Doctor --> Skills

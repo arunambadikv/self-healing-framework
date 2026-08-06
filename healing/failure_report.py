@@ -58,6 +58,9 @@ def infer_architecture_from_traceback(traceback_text: str) -> dict[str, Any] | N
     Prefer package auto-instrumentation (``healing.playwright_trace``) or BasePage
     helpers. This fallback still marks failures healable when the traceback points
     at ``pages/*.py`` (blocking HEALING_MCP_AUTO otherwise).
+
+    When the failing frame is a page method that wraps a raw locator, prefer an
+    existing ``@property`` whose expression matches the Playwright wait hint.
     """
     patterns = (
         # pytest short TB: pages/login_page.py:18: in click_submit_wrong
@@ -76,13 +79,106 @@ def infer_architecture_from_traceback(traceback_text: str) -> dict[str, Any] | N
     if method in {"goto", "navigate", "<module>"}:
         return None
     page_class = _module_stem_to_page_class(stem)
+    locator_id = method
+    architecture_ref = f"{page_class}.{method}"
+
+    property_name = _match_property_from_traceback(stem, traceback_text)
+    if property_name:
+        locator_id = property_name
+        architecture_ref = f"{page_class}.{property_name}"
+
     return {
         "page_class": page_class,
         "method": method,
-        "locator_id": method,
+        "locator_id": locator_id,
         "action": "interact",
-        "architecture_ref": f"{page_class}.{method}",
+        "architecture_ref": architecture_ref,
     }
+
+
+def _extract_playwright_selector_hints(traceback_text: str) -> list[str]:
+    hints: list[str] = []
+    for pattern in (
+        r'waiting for locator\("([^"]+)"\)',
+        r"waiting for locator\('([^']+)'\)",
+        r'locator\("([^"]+)"\)',
+        r"locator\('([^']+)'\)",
+        r'get_by_role\([^)]+\)',
+        r'get_by_text\([^)]+\)',
+        r'get_by_placeholder\([^)]+\)',
+    ):
+        for match in re.finditer(pattern, traceback_text):
+            hints.append(match.group(0) if match.lastindex is None else match.group(1))
+    return hints
+
+
+def _match_property_from_traceback(module_stem: str, traceback_text: str) -> str | None:
+    """If a page @property expression matches a Playwright hint, return that property name."""
+    from healing.paths import get_workspace
+
+    workspace = get_workspace()
+    page_path = workspace / "pages" / f"{module_stem}.py"
+    if not page_path.is_file():
+        return None
+    try:
+        source = page_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    hints = _extract_playwright_selector_hints(traceback_text)
+    if not hints:
+        return None
+
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        for item in node.body:
+            if not isinstance(item, ast.FunctionDef):
+                continue
+            if not any(
+                isinstance(d, ast.Name) and d.id == "property" for d in item.decorator_list
+            ):
+                continue
+            from healing.locator_source import extract_property_return_expression
+
+            expr = extract_property_return_expression(source, item.name) or ""
+            for hint in hints:
+                if hint and hint in expr:
+                    return item.name
+                # Constant attrs referenced by methods (e.g. self.WRONG_TABLE_LINK = "#x")
+                if hint and hint in source and f"{item.name}" in expr:
+                    # Prefer property only when expression embeds the hint
+                    pass
+            # Match class-level string constants used in methods that equal the hint
+            for hint in hints:
+                const_pat = rf'{re.escape(item.name)}\s*=\s*["\']({re.escape(hint)})["\']'
+                if re.search(const_pat, source):
+                    return item.name
+    # Also match module/class attributes that equal the selector (used by raw locator methods)
+    for hint in hints:
+        if not hint:
+            continue
+        attr_match = re.search(
+            rf'([A-Z_][A-Z0-9_]*)\s*=\s*["\']{re.escape(hint)}["\']',
+            source,
+        )
+        if attr_match:
+            # Prefer a property that returns that constant if present
+            attr = attr_match.group(1)
+            prop_match = re.search(
+                rf"@property\s+def\s+(\w+)\s*\([^)]*\):[^\n]*\n(?:\s+\"\"\"[^\"]*\"\"\"\s*\n)?\s+return\s+self\.{attr}",
+                source,
+            )
+            if prop_match:
+                return prop_match.group(1)
+    return None
 
 
 def _infer_failing_step(steps: list[dict[str, Any]]) -> dict[str, Any] | None:
