@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import resources
 from pathlib import Path
 
-# Skills shipped inside the installed package (consumer needs only CURSOR_API_KEY).
+# Consumer needs HEALING_LLM_PROVIDER + matching API key for automated MCP propose.
 # push-to-dev is intentionally omitted — it encodes this repo's git policy.
 BUNDLED_SKILLS = (
     "architecture-discovery",

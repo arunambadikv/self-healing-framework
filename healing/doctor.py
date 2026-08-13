@@ -181,15 +181,69 @@ def _check_mcp_json(workspace: Path) -> CheckResult:
 
 
 def _check_api_key(workspace: Path) -> CheckResult:
+    from healing.llm_config import KEY_ENV_VARS, LlmConfigError, resolve_llm_config
+
     load_dotenv_files(workspace)
-    key = os.environ.get("CURSOR_API_KEY", "").strip()
-    if key:
-        return CheckResult("CURSOR_API_KEY", "ok", "set (env or .env)")
+    try:
+        cfg = resolve_llm_config()
+    except LlmConfigError as exc:
+        return CheckResult("LLM provider", "warn", str(exc))
+
+    if cfg.has_key:
+        return CheckResult(
+            "LLM API key",
+            "ok",
+            f"{cfg.key_env} set for provider={cfg.provider} (model={cfg.model})",
+        )
+    others = [v for p, v in KEY_ENV_VARS.items() if p != cfg.provider and os.environ.get(v, "").strip()]
+    hint = (
+        f"set {cfg.key_env} for HEALING_LLM_PROVIDER={cfg.provider} "
+        "(capture/review work without it)"
+    )
+    if others:
+        hint += f"; note: other keys present ({', '.join(others)}) but unused for this provider"
     env_example = workspace / ".env.example"
-    hint = "set CURSOR_API_KEY for automated MCP propose (capture/review work without it)"
     if env_example.exists():
         hint += f" — see {env_example.name}"
-    return CheckResult("CURSOR_API_KEY", "warn", hint)
+    return CheckResult("LLM API key", "warn", hint)
+
+
+def _check_provider_sdk(workspace: Path) -> CheckResult:
+    from healing.llm_config import LlmConfigError, resolve_llm_config
+
+    load_dotenv_files(workspace)
+    try:
+        cfg = resolve_llm_config()
+    except LlmConfigError as exc:
+        return CheckResult("LLM SDK", "warn", str(exc))
+
+    if cfg.provider == "cursor":
+        return _check_cursor_sdk()
+    if cfg.provider == "openai":
+        try:
+            import openai  # noqa: F401
+            import mcp  # noqa: F401
+
+            return CheckResult("LLM SDK", "ok", "openai + mcp installed")
+        except ImportError:
+            return CheckResult(
+                "LLM SDK",
+                "warn",
+                "pip install 'healing[openai]' or 'healing[propose]' for OpenAI propose",
+            )
+    if cfg.provider == "anthropic":
+        try:
+            import anthropic  # noqa: F401
+            import mcp  # noqa: F401
+
+            return CheckResult("LLM SDK", "ok", "anthropic + mcp installed")
+        except ImportError:
+            return CheckResult(
+                "LLM SDK",
+                "warn",
+                "pip install 'healing[anthropic]' or 'healing[propose]' for Anthropic propose",
+            )
+    return CheckResult("LLM SDK", "warn", f"unknown provider {cfg.provider}")
 
 
 def _check_config(workspace: Path) -> CheckResult:
@@ -211,6 +265,45 @@ def _check_config(workspace: Path) -> CheckResult:
         "warn",
         "no healer-artifacts/healing.toml — run healing-init (defaults still apply)",
     )
+
+
+def _check_pages_dir(workspace: Path) -> CheckResult:
+    from healing.config import load_config
+    from healing.paths import configure_workspace
+
+    configure_workspace(workspace)
+    cfg = load_config(workspace)
+    pages = workspace / cfg.pages_dir
+    if pages.is_dir() and any(pages.glob("*.py")):
+        return CheckResult("pages dir", "ok", f"{cfg.pages_dir}/ with Python page objects")
+    if pages.is_dir():
+        return CheckResult("pages dir", "warn", f"{cfg.pages_dir}/ exists but has no .py files")
+    return CheckResult("pages dir", "warn", f"{cfg.pages_dir}/ missing — create page objects or run healing-init")
+
+
+def _check_env_not_tracked(workspace: Path) -> CheckResult:
+    env_path = workspace / ".env"
+    if not env_path.is_file():
+        return CheckResult(".env tracked", "ok", "no .env file (or not present yet)")
+    git = shutil.which("git")
+    if not git:
+        return CheckResult(".env tracked", "ok", ".env present (git not available to verify)")
+    try:
+        tracked = subprocess.run(
+            [git, "-C", str(workspace), "ls-files", "--error-unmatch", ".env"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if tracked.returncode == 0:
+            return CheckResult(
+                ".env tracked",
+                "warn",
+                ".env is tracked by git — remove it from the index and rely on .env.example",
+            )
+        return CheckResult(".env tracked", "ok", ".env present and not tracked by git")
+    except Exception as exc:
+        return CheckResult(".env tracked", "warn", f"could not check git tracking: {exc}")
 
 
 def _check_artifact_dirs(workspace: Path) -> CheckResult:
@@ -241,20 +334,24 @@ def _check_skills(workspace: Path) -> CheckResult:
 
 
 def verify_playwright_mcp(*, timeout_sec: float = 60.0) -> CheckResult:
-    """Optional live check: npx can resolve @playwright/mcp."""
+    """Optional live check: npx can resolve the pinned @playwright/mcp package."""
+    from healing.mcp_constants import PLAYWRIGHT_MCP_PACKAGE
+
     npx = shutil.which("npx")
     if not npx:
         return CheckResult("playwright MCP", "warn", "skipped — npx not available")
     try:
         proc = subprocess.run(
-            [npx, "--yes", "@playwright/mcp@latest", "--help"],
+            [npx, "--yes", PLAYWRIGHT_MCP_PACKAGE, "--help"],
             capture_output=True,
             text=True,
             timeout=timeout_sec,
             check=False,
         )
         if proc.returncode == 0:
-            return CheckResult("playwright MCP", "ok", "npx @playwright/mcp@latest responded")
+            return CheckResult(
+                "playwright MCP", "ok", f"npx {PLAYWRIGHT_MCP_PACKAGE} responded"
+            )
         err = (proc.stderr or proc.stdout or "").strip()[:200]
         return CheckResult("playwright MCP", "warn", f"npx mcp help failed: {err or proc.returncode}")
     except subprocess.TimeoutExpired:
@@ -273,13 +370,15 @@ def run_doctor(
     checks: list[Callable[[], CheckResult]] = [
         _check_package_import,
         _check_pytest_plugin,
-        _check_cursor_sdk,
+        lambda: _check_provider_sdk(workspace),
         _check_playwright_browsers,
         _check_npx,
         lambda: _check_mcp_json(workspace),
         lambda: _check_api_key(workspace),
         lambda: _check_config(workspace),
+        lambda: _check_pages_dir(workspace),
         lambda: _check_artifact_dirs(workspace),
+        lambda: _check_env_not_tracked(workspace),
         lambda: _check_skills(workspace),
     ]
     results = [fn() for fn in checks]
@@ -297,9 +396,14 @@ def format_report(results: list[CheckResult]) -> str:
     warns = sum(1 for r in results if r.status == "warn")
     lines.append("")
     lines.append(f"Summary: {errors} error(s), {warns} warning(s)")
-    if any(r.name == "CURSOR_API_KEY" and r.status == "warn" for r in results):
-        lines.append("Note: failure capture, scan, stub propose, review, and apply work without CURSOR_API_KEY.")
-        lines.append("      Automated MCP propose (mcp_propose_runner / HEALING_MCP_AUTO) needs the key.")
+    if any(r.name == "LLM API key" and r.status == "warn" for r in results):
+        lines.append(
+            "Note: failure capture, scan, stub propose, review, and apply work without an LLM key."
+        )
+        lines.append(
+            "      Automated MCP propose needs HEALING_LLM_PROVIDER + matching key "
+            "(CURSOR_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY)."
+        )
     if any(r.name == "mcp.json" for r in results):
         lines.append("Note: Cursor Settings → MCP is only for interactive IDE use.")
         lines.append("      CLI mcp_propose_runner starts Playwright MCP via stdio on its own.")
@@ -316,7 +420,7 @@ def main() -> int:
     parser.add_argument(
         "--verify-mcp",
         action="store_true",
-        help="Run npx @playwright/mcp@latest --help (may download; needs network).",
+        help="Run npx for the pinned @playwright/mcp package --help (may download; needs network).",
     )
     parser.add_argument(
         "--strict",

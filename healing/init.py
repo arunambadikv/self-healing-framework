@@ -22,10 +22,14 @@ auth_dir = "healer-artifacts/auth"
 
 DEFAULT_ENV_EXAMPLE = """\
 # Consumer secrets / toggles (copy to .env — never commit .env)
-# Only CURSOR_API_KEY is required for automated MCP propose.
-# Failure capture, architecture scan, stub propose, review, and apply work without it.
+# Automated MCP propose needs a provider + matching key.
+# Failure capture, architecture scan, stub propose, review, and apply work without keys.
 
+HEALING_LLM_PROVIDER=cursor
 CURSOR_API_KEY=
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+# HEALING_LLM_MODEL=
 
 # Opt-in: after healable locator failures, auto-run scan → stub → MCP propose
 # (read from .env automatically — no need to export every time)
@@ -71,10 +75,12 @@ def _write_mcp_stub(workspace: Path, *, force: bool = False) -> str | None:
     if src.exists():
         shutil.copy2(src, dest)
     else:
+        from healing.mcp_constants import PLAYWRIGHT_MCP_PACKAGE
+
         dest.write_text(
             '{\n  "mcpServers": {\n    "playwright": {\n'
             '      "command": "npx",\n'
-            '      "args": ["@playwright/mcp@latest"]\n'
+            f'      "args": ["{PLAYWRIGHT_MCP_PACKAGE}"]\n'
             "    }\n  }\n}\n",
             encoding="utf-8",
         )
@@ -157,7 +163,7 @@ def main() -> int:
     parser.add_argument(
         "--verify-mcp",
         action="store_true",
-        help="With doctor: also run npx @playwright/mcp@latest --help.",
+        help="With doctor: also run npx for the pinned @playwright/mcp package --help.",
     )
     args = parser.parse_args()
 
@@ -172,7 +178,7 @@ def main() -> int:
     else:
         print("  .cursor/mcp.json already present")
     if result.get("env_example"):
-        print(f"  wrote {result['env_example']} (copy to .env and set CURSOR_API_KEY for MCP propose)")
+        print(f"  wrote {result['env_example']} (copy to .env; set HEALING_LLM_PROVIDER + matching API key for MCP propose)")
     else:
         print("  .env.example already present")
     skills = result["skills"] or []
@@ -186,10 +192,11 @@ def main() -> int:
     print()
     print("Happy path:")
     print("  1. playwright install chromium")
-    print("  2. cp .env.example .env  # set CURSOR_API_KEY for MCP propose")
+    print("  2. cp .env.example .env  # set HEALING_LLM_PROVIDER + matching API key for MCP propose")
     print("  3. pytest tests/ -v")
     print("  4. optional: set HEALING_MCP_AUTO=1 in .env, then pytest tests/ -v")
     print("  healing-doctor          # re-check setup anytime")
+    print("  Install extras: healing[propose] | [mcp] | [openai] | [anthropic]")
     print("  Full guide: docs/CONSUMER_SETUP.md (in the healing package repo)")
     scan = result.get("scan")
     if isinstance(scan, dict):

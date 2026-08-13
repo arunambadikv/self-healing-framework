@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "failure_id": "F-test_orangehrm_broken_login_button-20260804-123456",
+  "created_at": "2026-08-04T12:34:56.000000+00:00",
+  "processed": false,
+  "test": {
+    "nodeid": "tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button",
+    "file": "tests/test_orangehrm_healing.py",
+    "name": "test_orangehrm_broken_login_button"
+  },
+  "environment": {
+    "base_url": "https://opensource-demo.orangehrmlive.com/web/index.php/auth/login",
+    "page_url": "https://opensource-demo.orangehrmlive.com/web/index.php/auth/login"
+  },
+  "error": {
+    "type": "TimeoutError",
+    "message": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for get_by_role(\"button\", name=\"Sign In\")",
+    "playwright_hint": "waiting for get_by_role(\"button\", name=\"Sign In\")"
+  },
+  "test_steps": [
+    {
+      "index": 0,
+      "page_class": "OrangeHrmLoginPage",
+      "method": "goto",
+      "action": "navigate",
+      "locator_id": null,
+      "locator_summary": "goto(https://opensource-demo.orangehrmlive.com/web/index.php/auth/login)"
+    },
+    {
+      "index": 1,
+      "page_class": "OrangeHrmLoginPage",
+      "method": "fill_username",
+      "action": "fill",
+      "locator_id": "username_input",
+      "locator_summary": "username_input='Admin'"
+    },
+    {
+      "index": 2,
+      "page_class": "OrangeHrmLoginPage",
+      "method": "fill_password",
+      "action": "fill",
+      "locator_id": "password_input",
+      "locator_summary": "password_input='admin123'"
+    },
+    {
+      "index": 3,
+      "page_class": "OrangeHrmLoginPage",
+      "method": "click_healing_demo_login",
+      "action": "click",
+      "locator_id": "healing_demo_login_button",
+      "locator_summary": "healing_demo_login_button"
+    }
+  ],
+  "failing_step": {
+    "index": 3,
+    "page_class": "OrangeHrmLoginPage",
+    "method": "click_healing_demo_login",
+    "action": "click",
+    "locator_id": "healing_demo_login_button",
+    "locator_summary": "healing_demo_login_button"
+  },
+  "architecture_ref": "OrangeHrmLoginPage.healing_demo_login_button",
+  "classification": "selector_break",
+  "healable": true,
+  "artifacts": {
+    "screenshot": "healer-artifacts/failures/screenshot-F-test_orangehrm_broken_login_button-20260804-123456.png",
+    "storage_state": "healer-artifacts/failures/storage-state-F-test_orangehrm_broken_login_button-20260804-123456.json"
+  }
+}

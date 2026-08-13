@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +21,14 @@ def _allowed_file(path: Path, workspace: Path) -> bool:
     if not parts or path.suffix != ".py":
         return False
     return parts[0] in cfg.apply_roots
+
+
+def _property_return_pattern(symbol: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"(@property\s+def\s+{re.escape(symbol)}\s*\([^)]*\)(?:\s*->[^:]*)?:\s*"
+        rf"(?:\n\s+\"\"\"[\s\S]*?\"\"\"\s*)?"
+        rf"\n\s*return\s+)(.+)"
+    )
 
 
 def apply_architecture_update(
@@ -43,22 +52,20 @@ def apply_architecture_update(
     new_content = content
     message = ""
 
-    if before and after and before in content:
-        new_content = content.replace(before, after, 1)
-        message = f"Replaced locator expression for '{symbol}' in {update['file']}"
-    elif symbol and after:
-        # Replace return expression inside @property def symbol (docstring allowed)
-        pattern = (
-            rf"(@property\s+def\s+{re.escape(symbol)}\s*\([^)]*\)\s*->[^:]+:\s*"
-            rf"(?:\n\s+\"\"\"[\s\S]*?\"\"\"\s*)?"
-            rf"\n\s*return\s+)(.+)"
-        )
-        match = re.search(pattern, content)
+    # Prefer symbol-based property update when symbol + after are present.
+    if symbol and after:
+        match = _property_return_pattern(symbol).search(content)
         if match:
             new_content = content[: match.start(2)] + after + content[match.end(2) :]
             message = f"Updated property '{symbol}' return in {update['file']}"
+        elif before and before in content:
+            new_content = content.replace(before, after, 1)
+            message = f"Replaced locator expression for '{symbol}' in {update['file']}"
         else:
             raise ValueError(f"Could not locate property '{symbol}' in {update['file']}")
+    elif before and after and before in content:
+        new_content = content.replace(before, after, 1)
+        message = f"Replaced locator expression for '{symbol}' in {update['file']}"
     else:
         raise ValueError(f"Insufficient update data for symbol '{symbol}'")
 
@@ -68,6 +75,37 @@ def apply_architecture_update(
     if not dry_run:
         file_path.write_text(new_content, encoding="utf-8")
     return message
+
+
+def is_validation_command_allowed(argv: list[str]) -> bool:
+    """True when argv is an allowlisted pytest / healing module invocation."""
+    if not argv:
+        return False
+    first = Path(argv[0]).name
+    if first in ("pytest", "py.test"):
+        return True
+    if first in ("python", "python3"):
+        if len(argv) >= 3 and argv[1] == "-m" and argv[2] == "pytest":
+            return True
+        if len(argv) >= 3 and argv[1] == "-m" and argv[2].startswith("healing."):
+            return True
+        return False
+    return False
+
+
+def parse_validation_command(validation_cmd: str) -> list[str]:
+    """Split validation command and reject shell metacharacters / disallowed argv."""
+    try:
+        argv = shlex.split(validation_cmd)
+    except ValueError as exc:
+        raise ValueError(f"Invalid validation_command: {exc}") from exc
+    if not is_validation_command_allowed(argv):
+        raise ValueError(
+            "validation_command must be an allowlisted invocation "
+            "(pytest, python -m pytest, or python -m healing.*); "
+            f"got: {validation_cmd!r}"
+        )
+    return argv
 
 
 def apply_patch_payload(
@@ -82,24 +120,39 @@ def apply_patch_payload(
     if not updates:
         raise ValueError("Patch has no architecture_updates.")
 
-    messages: list[str] = []
-    for update in updates:
-        messages.append(apply_architecture_update(workspace, update, dry_run=dry_run))
+    # Snapshot originals before any writes so validation failure can roll back.
+    snapshots: dict[Path, str] = {}
+    if not dry_run:
+        for update in updates:
+            file_path = (workspace / update["file"]).resolve()
+            if file_path not in snapshots and file_path.exists():
+                snapshots[file_path] = file_path.read_text(encoding="utf-8")
 
-    validation_cmd = proposal.get("validation_command") or payload.get("validation_command")
-    if run_validation and validation_cmd and not dry_run:
-        result = subprocess.run(
-            validation_cmd,
-            shell=True,
-            cwd=workspace,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Validation failed ({validation_cmd}):\n{result.stdout}\n{result.stderr}"
+    messages: list[str] = []
+    try:
+        for update in updates:
+            messages.append(apply_architecture_update(workspace, update, dry_run=dry_run))
+
+        validation_cmd = proposal.get("validation_command") or payload.get("validation_command")
+        if run_validation and validation_cmd and not dry_run:
+            argv = parse_validation_command(str(validation_cmd))
+            result = subprocess.run(
+                argv,
+                shell=False,
+                cwd=workspace,
+                capture_output=True,
+                text=True,
             )
-        messages.append(f"Validation passed: {validation_cmd}")
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Validation failed ({validation_cmd}):\n{result.stdout}\n{result.stderr}"
+                )
+            messages.append(f"Validation passed: {validation_cmd}")
+    except Exception:
+        if not dry_run:
+            for path, original in snapshots.items():
+                path.write_text(original, encoding="utf-8")
+        raise
 
     return messages
 

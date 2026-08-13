@@ -65,7 +65,10 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     from healing.playwright_trace import uninstall_playwright_tracing
 
     try:
-        run_post_test_chain(workspace)
+        chain_rc = run_post_test_chain(workspace)
+        if chain_rc != 0 and exitstatus == 0:
+            # Surface auto-chain failures even when tests themselves passed.
+            session.exitstatus = 1
     finally:
         uninstall_playwright_tracing()
 

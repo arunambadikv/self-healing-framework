@@ -7,16 +7,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from healing.paths import MANIFEST_JSON
 
 
 def _load_healing_config(workspace: Path) -> dict[str, Any]:
-    config_path = workspace / "healing" / "ci_gates_config.yaml"
-    if not config_path.exists():
-        return {}
-    return yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    from healing.gates_config import load_healing_yaml
+
+    return load_healing_yaml(workspace)
 
 
 def is_auto_enabled(workspace: Path | None = None) -> bool:
@@ -88,11 +85,12 @@ def run_mcp_propose_all(workspace: Path) -> int:
     """Complete the latest session patch(es) via MCP (newest first; one per architecture_ref)."""
     from healing.doctor import load_dotenv_files
     from healing.healing_queue import select_latest_awaiting_patches
+    from healing.llm_config import resolve_llm_config
     from healing.mcp_propose_runner import process_patch_entry
     from healing.session_state import session_new_patch_ids
 
     load_dotenv_files(workspace)
-    api_key = os.environ.get("CURSOR_API_KEY", "").strip() or None
+    config = resolve_llm_config()
     session_patches = session_new_patch_ids()
     if not session_patches:
         print(
@@ -125,14 +123,15 @@ def run_mcp_propose_all(workspace: Path) -> int:
     latest = session_entries[0]
     print(
         f"[healing] mcp_propose_runner: processing latest patch "
-        f"{latest.get('patch_id')} first ({len(session_entries)} session patch(es))"
+        f"{latest.get('patch_id')} first ({len(session_entries)} session patch(es); "
+        f"provider={config.provider})"
     )
 
     rc = 0
     for entry in session_entries:
         patch_id = entry.get("patch_id")
         try:
-            if not process_patch_entry(entry, workspace=workspace, api_key=api_key):
+            if not process_patch_entry(entry, workspace=workspace, config=config):
                 rc = 1
         except Exception as exc:
             print(f"[healing] mcp_propose_runner failed for {patch_id}: {exc}")
@@ -150,17 +149,20 @@ def should_run_post_test_chain(workspace: Path | None = None) -> bool:
     return session_had_healable_failures()
 
 
-def run_post_test_chain(workspace: Path | None = None) -> None:
-    """Run optional post-test healing steps when HEALING_MCP_AUTO=1 or config flag set."""
+def run_post_test_chain(workspace: Path | None = None) -> int:
+    """Run optional post-test healing steps when HEALING_MCP_AUTO=1 or config flag set.
+
+    Returns 0 on success / skip, non-zero when a chain step failed.
+    """
     workspace = (workspace or Path.cwd()).resolve()
     if not is_auto_enabled(workspace):
-        return
+        return 0
     if not should_run_post_test_chain(workspace):
         print(
             "\n[healing] HEALING_MCP_AUTO enabled — skipping post-test chain "
             "(no healable locator failures captured this session)"
         )
-        return
+        return 0
     print("\n[healing] HEALING_MCP_AUTO enabled — running post-test chain (this session only)")
     steps = (
         ("architecture_scan", run_architecture_scan_if_needed),
@@ -174,3 +176,5 @@ def run_post_test_chain(workspace: Path | None = None) -> None:
             failed.append(name)
     if failed:
         print(f"[healing] post-test chain completed with errors: {', '.join(failed)}")
+        return 1
+    return 0

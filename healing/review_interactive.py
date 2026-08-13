@@ -167,7 +167,17 @@ def run_interactive_review(
 
     remaining = list_patch_ready()
     if not remaining:
-        out.write("\nAll patches processed.\n")
+        from healing.healing_queue import list_deferred
+
+        deferred_left = list_deferred()
+        if deferred_left or deferred_count:
+            out.write(
+                f"\nNo patch_ready items left "
+                f"({len(deferred_left)} deferred — re-queue with "
+                "`python -m healing.healing_review --promote P-<id>` or `--list-deferred`).\n"
+            )
+        else:
+            out.write("\nAll patches processed.\n")
         write_summary(workspace)
     else:
         pending = len(remaining)

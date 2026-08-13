@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[mcp]"
+          pip install -e ".[propose]"
           playwright install chromium
 
       - name: Run pytest
@@ -70,15 +70,41 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[mcp]"
+          pip install -e ".[propose]"
           playwright install chromium
 
       - name: Create stub patches
         run: python -m healing.pom_propose --process-all
 
-      - name: Complete patches via SDK + Playwright MCP
+      - name: Require LLM API key for selected provider
         env:
+          HEALING_LLM_PROVIDER: ${{ vars.HEALING_LLM_PROVIDER || 'cursor' }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os, sys
+          from healing.llm_config import resolve_llm_config, missing_key_message
+          cfg = resolve_llm_config()
+          if not cfg.has_key:
+              print(missing_key_message(cfg), file=sys.stderr)
+              print(
+                  f"::error::Set secret {cfg.key_env} (and optionally vars.HEALING_LLM_PROVIDER) "
+                  f"for provider={cfg.provider}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          print(f"ok provider={cfg.provider} model={cfg.model} key={cfg.key_env}")
+          PY
+
+      - name: Complete patches via LLM + Playwright MCP
+        env:
+          HEALING_LLM_PROVIDER: ${{ vars.HEALING_LLM_PROVIDER || 'cursor' }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HEALING_LLM_MODEL: ${{ vars.HEALING_LLM_MODEL || '' }}
         run: python -m healing.mcp_propose_runner --process-all
 
       - name: Summarize patches for review
@@ -86,11 +112,24 @@ jobs:
         run: |
           echo "## Healing patches awaiting review" >> "$GITHUB_STEP_SUMMARY"
           python -m healing.healing_review --promote-all >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
-          python -m healing.healing_review --list >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
-          for patch in $(python -m healing.healing_review --list 2>/dev/null | sed 's/- //' | cut -d' ' -f1); do
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            python -m healing.healing_review --show "$patch" >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
-          done
+          python -m healing.healing_review --list --json >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          import json, subprocess
+          raw = subprocess.check_output(
+              ["python", "-m", "healing.healing_review", "--list", "--json"],
+              text=True,
+          )
+          data = json.loads(raw)
+          for entry in data.get("entries") or []:
+              pid = entry.get("patch_id")
+              if not pid:
+                  continue
+              print(f"\n### {pid}\n")
+              subprocess.run(
+                  ["python", "-m", "healing.healing_review", "--show", pid],
+                  check=False,
+              )
+          PY
 
       - name: Upload updated healing artifacts
         if: always()

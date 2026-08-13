@@ -14,6 +14,15 @@ def _seed_patch_ready(tmp_path: Path, monkeypatch, *, patch_id: str, failure_id:
     monkeypatch.chdir(tmp_path)
     configure_workspace(tmp_path)
     ensure_queue_dirs()
+    pages = tmp_path / "pages"
+    pages.mkdir(exist_ok=True)
+    (pages / "demo_page.py").write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def green_button(self):\n"
+        '        return self.page.get_by_role("button", name="Old")\n',
+        encoding="utf-8",
+    )
     failure_payload = {
         "failure_id": failure_id,
         "processed": False,
@@ -110,7 +119,8 @@ def test_interactive_defer_then_quit(tmp_path: Path, monkeypatch):
     text = output.getvalue()
     assert "Deferred P-inter01" in text
     assert "status → deferred" in text
-    assert "All patches processed" in text
+    assert "deferred" in text.lower()
+    assert "No patch_ready items left" in text or "list-deferred" in text
 
 
 def test_format_review_card_includes_screenshot(tmp_path: Path, monkeypatch):

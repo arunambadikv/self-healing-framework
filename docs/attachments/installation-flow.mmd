@@ -1,0 +1,8 @@
+flowchart LR
+  A[Create venv] --> B["pip install healing[mcp]"]
+  B --> C[playwright install chromium]
+  C --> D[healing-init]
+  D --> E[cp .env.example .env]
+  E --> F[healing-doctor]
+  F --> G[pytest tests/]
+  G -->|optional MCP propose| H[CURSOR_API_KEY + HEALING_MCP_AUTO]

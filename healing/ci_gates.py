@@ -20,8 +20,6 @@ class GateConfig:
     max_healed_ratio_fail: float = 0.30
     min_events_for_ratio: int = 1
     repeat_healed_key_warn: int = 2
-    registry_lint_enabled: bool = True
-    registry_fail_on_warnings: bool = False
     test_policy_enabled: bool = True
     test_policy_allowlist: list[str] = field(default_factory=list)
     test_policy_forbidden_patterns: list[str] = field(default_factory=list)
@@ -45,8 +43,11 @@ class HealingAggregate:
 
 def load_gate_config(path: Path) -> GateConfig:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return gate_config_from_raw(raw)
+
+
+def gate_config_from_raw(raw: dict[str, Any]) -> GateConfig:
     thresholds = raw.get("thresholds", {})
-    registry = raw.get("registry_lint", {})
     policy = raw.get("test_policy", {})
     return GateConfig(
         ignore_report_globs=list(thresholds.get("ignore_report_globs", [])),
@@ -55,8 +56,6 @@ def load_gate_config(path: Path) -> GateConfig:
         max_healed_ratio_fail=float(thresholds.get("max_healed_ratio_fail", 0.30)),
         min_events_for_ratio=int(thresholds.get("min_events_for_ratio", 1)),
         repeat_healed_key_warn=int(thresholds.get("repeat_healed_key_warn", 2)),
-        registry_lint_enabled=bool(registry.get("enabled", True)),
-        registry_fail_on_warnings=bool(registry.get("fail_on_warnings", False)),
         test_policy_enabled=bool(policy.get("enabled", True)),
         test_policy_allowlist=list(policy.get("allowlist", [])),
         test_policy_forbidden_patterns=list(policy.get("forbidden_patterns", [])),
@@ -138,7 +137,6 @@ def run_ci_gates(
     workspace: Path,
     config: GateConfig,
     reports_dir: Path,
-    registry_path: Path,
     tests_dir: Path,
     skip_queue_gates: bool = False,
 ) -> tuple[int, list[str], list[str]]:
@@ -198,7 +196,6 @@ def run_ci_gates(
         elif config.test_policy_raw_mode == "warn":
             warnings.extend(policy_errors)
             warnings.extend(policy_warnings)
-            errors.extend(policy_errors)
         else:
             errors.extend(policy_errors)
             warnings.extend(policy_warnings)
@@ -234,7 +231,7 @@ def run_ci_gates(
     for key in repeat_keys:
         warnings.append(
             f"Semantic key '{key}' healed in {config.repeat_healed_key_warn}+ reports; "
-            "consider registry promotion via MCP/agent review."
+            "consider promoting a stable locator via MCP/agent review."
         )
 
     exit_code = 1 if errors else 0
@@ -243,7 +240,7 @@ def run_ci_gates(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run Phase A CI gates: registry lint, smart test policy, healing thresholds."
+        description="Run CI gates: test policy, architecture manifest, healing thresholds."
     )
     parser.add_argument("--workspace", default=".", help="Workspace root.")
     parser.add_argument(
@@ -256,16 +253,11 @@ def main() -> int:
         default="healer-artifacts/healing-reports",
         help="Healing reports directory.",
     )
-    parser.add_argument(
-        "--registry",
-        default="locator_registry.yaml",
-        help="Locator registry path.",
-    )
     parser.add_argument("--tests-dir", default="tests", help="Tests directory.")
     parser.add_argument(
         "--skip-reports",
         action="store_true",
-        help="Skip healing report threshold checks (registry + policy only).",
+        help="Skip healing report threshold checks (policy + queue only).",
     )
     parser.add_argument(
         "--skip-queue-gates",
@@ -275,12 +267,15 @@ def main() -> int:
     args = parser.parse_args()
 
     workspace = Path(args.workspace).resolve()
-    config_path = workspace / args.config
-    if not config_path.exists():
-        print(f"ERROR: config not found: {config_path}")
-        return 2
+    from healing.gates_config import load_healing_yaml
 
-    config = load_gate_config(config_path)
+    config_path = workspace / args.config
+    if config_path.exists():
+        config = load_gate_config(config_path)
+    else:
+        config = gate_config_from_raw(load_healing_yaml(workspace))
+        print(f"[healing] Using packaged gate config (no {config_path})")
+
     reports_dir = workspace / args.reports_dir
 
     if args.skip_reports:
@@ -290,7 +285,6 @@ def main() -> int:
         workspace=workspace,
         config=config,
         reports_dir=reports_dir,
-        registry_path=workspace / args.registry,
         tests_dir=workspace / args.tests_dir,
         skip_queue_gates=args.skip_queue_gates,
     )

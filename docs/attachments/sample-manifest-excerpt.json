@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-04T10:38:36.632119+00:00",
+  "content_hash": "620a2ccaeb18f269",
+  "pages": {
+    "OrangeHrmLoginPage": {
+      "file": "pages/orangehrm_login_page.py",
+      "locators": {
+        "username_input": {
+          "line": 18,
+          "kind": "property",
+          "expression": "self.page.get_by_role(\"textbox\", name=\"Username\")"
+        },
+        "password_input": {
+          "line": 22,
+          "kind": "property",
+          "expression": "self.page.get_by_role(\"textbox\", name=\"Password\")"
+        },
+        "login_button": {
+          "line": 26,
+          "kind": "property",
+          "expression": "self.page.get_by_role(\"button\", name=\"Login\")"
+        },
+        "healing_demo_login_button": {
+          "line": 30,
+          "kind": "property",
+          "expression": "self.page.get_by_role(\"button\", name=\"Sign In\")"
+        }
+      },
+      "methods": {
+        "fill_username": { "line": 43, "locator_deps": ["username_input"] },
+        "fill_password": { "line": 46, "locator_deps": ["password_input"] },
+        "click_login": { "line": 57, "locator_deps": ["login_button"] },
+        "click_healing_demo_login": {
+          "line": 60,
+          "locator_deps": ["healing_demo_login_button"]
+        }
+      }
+    }
+  }
+}

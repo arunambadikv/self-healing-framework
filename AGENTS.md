@@ -31,10 +31,10 @@
 See **[docs/CONSUMER_SETUP.md](docs/CONSUMER_SETUP.md)** for full requirements, `healing-init` / `healing-doctor`, CLI reference, and troubleshooting.
 
 ```bash
-pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+pip install "healing[propose] @ git+https://github.com/arunambadikv/self-healing-framework.git"
 playwright install chromium
 healing-init
-cp .env.example .env   # set CURSOR_API_KEY for MCP propose only
+cp .env.example .env   # set HEALING_LLM_PROVIDER + matching API key for MCP propose only
 healing-doctor
 ```
 
@@ -55,7 +55,7 @@ For automated MCP propose:
 ```bash
 source .venv/bin/activate
 pip install -r requirements.txt   # includes cursor-sdk
-# CURSOR_API_KEY in .env (loaded automatically)
+# HEALING_LLM_PROVIDER + matching API key in .env (loaded automatically)
 ```
 
 ## Failure → patch → apply workflow
@@ -66,7 +66,7 @@ pip install -r requirements.txt   # includes cursor-sdk
 pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run-healing-demo -v
 # → healer-artifacts/failures/F-test_orangehrm_broken_login_button-20260801-123456.json + .md
 # → classification: selector_break | network | app_regression | auth_failure | ...
-# → non-healable failures marked not_healable in queue index
+# → only selector_break is healable; others marked not_healable in queue index
 ```
 
 ### 2. Refresh architecture context
@@ -101,7 +101,7 @@ python -m healing.mcp_propose_runner --patch-id P-<id>
 
 ```bash
 export HEALING_MCP_AUTO=1
-export CURSOR_API_KEY=cursor_...
+# HEALING_LLM_PROVIDER=cursor|openai|anthropic + matching key in .env
 pytest tests/ -v
 # on healable locator failure at session end → architecture_scan (if stale)
 # → pom_propose (always new stub for this session's failures)

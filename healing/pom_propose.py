@@ -233,12 +233,16 @@ def main() -> int:
     parser.add_argument("--process-all", action="store_true", help="Create stub patches for all pending.")
     parser.add_argument("--failure-id", help="Process single failure id.")
     parser.add_argument("--workspace", default=".", type=Path)
+    parser.add_argument("--json", action="store_true", help="Emit JSON for --list.")
     args = parser.parse_args()
     workspace = args.workspace.resolve()
     ensure_queue_dirs()
 
     if args.list:
         pending = list_unprocessed_failures()
+        if args.json:
+            print(json.dumps({"status": "pending_proposal", "entries": pending}, indent=2, ensure_ascii=True))
+            return 0
         if not pending:
             print("No unprocessed failures.")
             return 0
