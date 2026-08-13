@@ -519,7 +519,7 @@ def test_auto_chain_mcp_runs_latest_session_patch(tmp_path: Path, monkeypatch, c
 
     calls: list[str] = []
 
-    def fake_process(entry, *, workspace, api_key):
+    def fake_process(entry, *, workspace, api_key=None, config=None):
         calls.append(entry["patch_id"])
         return True
 
@@ -682,26 +682,17 @@ def test_build_failure_payload_includes_storage_state():
 
 
 def test_mcp_servers_include_isolated_storage_state(tmp_path: Path, monkeypatch):
-    from healing.mcp_propose_runner import (
-        _load_mcp_servers,
-        _with_storage_state_args,
-        resolve_storage_state_path,
-    )
+    from healing.mcp_propose_runner import resolve_storage_state_path
+    from healing.mcp_stdio import load_playwright_mcp_stdio, with_storage_state_args
 
     state = tmp_path / "storage-state-F-x.json"
     state.write_text("{}", encoding="utf-8")
-    args = _with_storage_state_args(["@playwright/mcp@latest"], state)
+    args = with_storage_state_args(["@playwright/mcp@latest"], state)
     assert "--isolated" in args
     assert any(a.startswith("--storage-state=") for a in args)
 
     failure = {"artifacts": {"storage_state": str(state)}}
     assert resolve_storage_state_path(failure, tmp_path) == state
-
-    # Avoid importing cursor_sdk StdioMcpServerConfig unless available
-    try:
-        import cursor_sdk  # noqa: F401
-    except ImportError:
-        return
 
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".cursor").mkdir()
@@ -709,10 +700,9 @@ def test_mcp_servers_include_isolated_storage_state(tmp_path: Path, monkeypatch)
         json.dumps({"mcpServers": {"playwright": {"command": "npx", "args": ["@playwright/mcp@latest"]}}}),
         encoding="utf-8",
     )
-    servers = _load_mcp_servers(tmp_path, storage_state=state)
-    playwright = servers["playwright"]
-    assert "--isolated" in playwright.args
-    assert any(str(a).startswith("--storage-state=") for a in playwright.args)
+    cfg = load_playwright_mcp_stdio(tmp_path, storage_state=state)
+    assert "--isolated" in cfg.args
+    assert any(str(a).startswith("--storage-state=") for a in cfg.args)
 
 
 def test_proposal_prompt_prefers_page_url_and_storage_state():
@@ -884,6 +874,7 @@ def test_init_workspace_writes_healer_layout_and_skills(tmp_path: Path, monkeypa
     assert result.get("env_example") == ".env.example"
     assert (tmp_path / ".env.example").exists()
     assert "CURSOR_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
+    assert "HEALING_LLM_PROVIDER" in (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert FAILURES_DIR.resolve() == (tmp_path / "healer-artifacts" / "failures").resolve()
     assert (tmp_path / ".cursor" / "skills" / "healing-init" / "SKILL.md").exists()
     assert (tmp_path / ".cursor" / "mcp.json").exists()
@@ -898,11 +889,14 @@ def test_doctor_reports_ok_for_package_and_warns_without_api_key(tmp_path: Path,
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("HEALING_LLM_PROVIDER", raising=False)
     init_workspace(tmp_path, force=True, scan=False)
     results = run_doctor(tmp_path, verify_mcp=False)
     by_name = {r.name: r for r in results}
     assert by_name["healing package"].status == "ok"
-    assert by_name["CURSOR_API_KEY"].status == "warn"
+    assert by_name["LLM API key"].status == "warn"
     assert by_name["mcp.json"].status == "ok"
     assert by_name["healing.toml"].status == "ok"
     reset_workspace()
@@ -1377,4 +1371,197 @@ def test_mcp_propose_runner_with_mocked_agent(tmp_path: Path, monkeypatch):
     from healing.healing_queue import list_patch_ready
 
     assert any(e.get("patch_id") == patch_id for e in list_patch_ready())
+
+
+def test_resolve_llm_config_defaults_and_keys(monkeypatch):
+    from healing.llm_config import LlmConfigError, resolve_llm_config
+
+    monkeypatch.delenv("HEALING_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("HEALING_LLM_MODEL", raising=False)
+    monkeypatch.delenv("HEALING_MCP_MODEL", raising=False)
+
+    cfg = resolve_llm_config()
+    assert cfg.provider == "cursor"
+    assert cfg.model == "composer-2.5"
+    assert not cfg.has_key
+
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    cfg = resolve_llm_config(require_key=True)
+    assert cfg.provider == "openai"
+    assert cfg.api_key == "sk-test"
+    assert cfg.model == "gpt-4.1"
+    assert cfg.key_env == "OPENAI_API_KEY"
+
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "ant-test")
+    monkeypatch.setenv("HEALING_LLM_MODEL", "claude-custom")
+    cfg = resolve_llm_config()
+    assert cfg.provider == "anthropic"
+    assert cfg.model == "claude-custom"
+
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "nope")
+    try:
+        resolve_llm_config()
+        raise AssertionError("expected LlmConfigError")
+    except LlmConfigError:
+        pass
+
+
+def test_openai_provider_mocked_tool_loop(tmp_path: Path, monkeypatch):
+    """OpenAI provider completes a patch without live MCP/OpenAI (mocked loop)."""
+    from healing.llm_config import LlmConfig
+    from healing.mcp_propose_runner import process_patch_entry
+    from healing.paths import QUEUE_PATCHES
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    ensure_queue_dirs()
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "demo_page.py").write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def btn(self):\n"
+        "        return self.page.locator('#old')\n",
+        encoding="utf-8",
+    )
+    failure_id = "F-oai01"
+    patch_id = "P-oai01"
+    json_path = FAILURES_DIR / f"{failure_id}.json"
+    md_path = FAILURES_DIR / f"{failure_id}.md"
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps({"failure_id": failure_id, "artifacts": {}}), encoding="utf-8")
+    md_path.write_text("# f", encoding="utf-8")
+    register_failure(failure_id, json_path=json_path, md_path=md_path)
+    patch_path = QUEUE_PATCHES / f"{patch_id}.json"
+    patch_path.parent.mkdir(parents=True, exist_ok=True)
+    stub = {
+        "proposal": {
+            "patch_id": patch_id,
+            "failure_id": failure_id,
+            "proposal_status": "awaiting_agent",
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "btn",
+                    "before": "self.page.locator('#old')",
+                    "after": "TODO: replace",
+                }
+            ],
+        }
+    }
+    patch_path.write_text(json.dumps(stub), encoding="utf-8")
+    (QUEUE_PATCHES / f"{patch_id}.md").write_text("# task", encoding="utf-8")
+    mark_failure_proposed(
+        failure_id, patch_id, patch_json=patch_path, patch_md=QUEUE_PATCHES / f"{patch_id}.md"
+    )
+
+    class FakeProvider:
+        def run_propose(self, prompt, *, workspace, config, storage_state=None):
+            data = json.loads(patch_path.read_text(encoding="utf-8"))
+            data["proposal"]["architecture_updates"][0]["after"] = "self.page.locator('#new')"
+            data["proposal"]["proposal_status"] = "complete"
+            patch_path.write_text(json.dumps(data), encoding="utf-8")
+            return "openai done"
+
+    monkeypatch.setattr(
+        "healing.propose_providers.get_provider",
+        lambda cfg: FakeProvider(),
+    )
+    cfg = LlmConfig(provider="openai", api_key="sk-test", model="gpt-4.1", key_env="OPENAI_API_KEY")
+    ok = process_patch_entry(
+        {"patch_id": patch_id, "failure_id": failure_id},
+        workspace=tmp_path,
+        config=cfg,
+    )
+    assert ok is True
+    from healing.healing_queue import list_patch_ready
+
+    assert any(e.get("patch_id") == patch_id for e in list_patch_ready())
+
+
+def test_anthropic_provider_mocked_tool_loop(tmp_path: Path, monkeypatch):
+    from healing.llm_config import LlmConfig
+    from healing.mcp_propose_runner import process_patch_entry
+    from healing.paths import QUEUE_PATCHES
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    ensure_queue_dirs()
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "demo_page.py").write_text(
+        "class DemoPage:\n"
+        "    @property\n"
+        "    def btn(self):\n"
+        "        return self.page.locator('#old')\n",
+        encoding="utf-8",
+    )
+    failure_id = "F-ant01"
+    patch_id = "P-ant01"
+    json_path = FAILURES_DIR / f"{failure_id}.json"
+    md_path = FAILURES_DIR / f"{failure_id}.md"
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps({"failure_id": failure_id, "artifacts": {}}), encoding="utf-8")
+    md_path.write_text("# f", encoding="utf-8")
+    register_failure(failure_id, json_path=json_path, md_path=md_path)
+    patch_path = QUEUE_PATCHES / f"{patch_id}.json"
+    patch_path.parent.mkdir(parents=True, exist_ok=True)
+    stub = {
+        "proposal": {
+            "patch_id": patch_id,
+            "failure_id": failure_id,
+            "proposal_status": "awaiting_agent",
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "btn",
+                    "before": "self.page.locator('#old')",
+                    "after": "TODO: replace",
+                }
+            ],
+        }
+    }
+    patch_path.write_text(json.dumps(stub), encoding="utf-8")
+    (QUEUE_PATCHES / f"{patch_id}.md").write_text("# task", encoding="utf-8")
+    mark_failure_proposed(
+        failure_id, patch_id, patch_json=patch_path, patch_md=QUEUE_PATCHES / f"{patch_id}.md"
+    )
+
+    class FakeProvider:
+        def run_propose(self, prompt, *, workspace, config, storage_state=None):
+            data = json.loads(patch_path.read_text(encoding="utf-8"))
+            data["proposal"]["architecture_updates"][0]["after"] = "self.page.locator('#new')"
+            data["proposal"]["proposal_status"] = "complete"
+            patch_path.write_text(json.dumps(data), encoding="utf-8")
+            return "anthropic done"
+
+    monkeypatch.setattr(
+        "healing.propose_providers.get_provider",
+        lambda cfg: FakeProvider(),
+    )
+    cfg = LlmConfig(
+        provider="anthropic", api_key="ant-test", model="claude-sonnet-4-5", key_env="ANTHROPIC_API_KEY"
+    )
+    ok = process_patch_entry(
+        {"patch_id": patch_id, "failure_id": failure_id},
+        workspace=tmp_path,
+        config=cfg,
+    )
+    assert ok is True
+
+
+def test_ci_workflow_mentions_multi_provider_secrets():
+    root = Path(__file__).resolve().parents[1]
+    ci = (root / ".github/workflows/healing-ci.yml").read_text(encoding="utf-8")
+    assert "HEALING_LLM_PROVIDER" in ci
+    assert "OPENAI_API_KEY" in ci
+    assert "ANTHROPIC_API_KEY" in ci
+    e2e = (root / ".github/workflows/healing-pipeline-e2e.yml").read_text(encoding="utf-8")
+    assert "HEALING_LLM_PROVIDER" in e2e
+    assert "steps.llm.outputs.has_key" in e2e
 

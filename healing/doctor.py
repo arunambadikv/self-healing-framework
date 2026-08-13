@@ -181,15 +181,69 @@ def _check_mcp_json(workspace: Path) -> CheckResult:
 
 
 def _check_api_key(workspace: Path) -> CheckResult:
+    from healing.llm_config import KEY_ENV_VARS, LlmConfigError, resolve_llm_config
+
     load_dotenv_files(workspace)
-    key = os.environ.get("CURSOR_API_KEY", "").strip()
-    if key:
-        return CheckResult("CURSOR_API_KEY", "ok", "set (env or .env)")
+    try:
+        cfg = resolve_llm_config()
+    except LlmConfigError as exc:
+        return CheckResult("LLM provider", "warn", str(exc))
+
+    if cfg.has_key:
+        return CheckResult(
+            "LLM API key",
+            "ok",
+            f"{cfg.key_env} set for provider={cfg.provider} (model={cfg.model})",
+        )
+    others = [v for p, v in KEY_ENV_VARS.items() if p != cfg.provider and os.environ.get(v, "").strip()]
+    hint = (
+        f"set {cfg.key_env} for HEALING_LLM_PROVIDER={cfg.provider} "
+        "(capture/review work without it)"
+    )
+    if others:
+        hint += f"; note: other keys present ({', '.join(others)}) but unused for this provider"
     env_example = workspace / ".env.example"
-    hint = "set CURSOR_API_KEY for automated MCP propose (capture/review work without it)"
     if env_example.exists():
         hint += f" — see {env_example.name}"
-    return CheckResult("CURSOR_API_KEY", "warn", hint)
+    return CheckResult("LLM API key", "warn", hint)
+
+
+def _check_provider_sdk(workspace: Path) -> CheckResult:
+    from healing.llm_config import LlmConfigError, resolve_llm_config
+
+    load_dotenv_files(workspace)
+    try:
+        cfg = resolve_llm_config()
+    except LlmConfigError as exc:
+        return CheckResult("LLM SDK", "warn", str(exc))
+
+    if cfg.provider == "cursor":
+        return _check_cursor_sdk()
+    if cfg.provider == "openai":
+        try:
+            import openai  # noqa: F401
+            import mcp  # noqa: F401
+
+            return CheckResult("LLM SDK", "ok", "openai + mcp installed")
+        except ImportError:
+            return CheckResult(
+                "LLM SDK",
+                "warn",
+                "pip install 'healing[openai]' or 'healing[propose]' for OpenAI propose",
+            )
+    if cfg.provider == "anthropic":
+        try:
+            import anthropic  # noqa: F401
+            import mcp  # noqa: F401
+
+            return CheckResult("LLM SDK", "ok", "anthropic + mcp installed")
+        except ImportError:
+            return CheckResult(
+                "LLM SDK",
+                "warn",
+                "pip install 'healing[anthropic]' or 'healing[propose]' for Anthropic propose",
+            )
+    return CheckResult("LLM SDK", "warn", f"unknown provider {cfg.provider}")
 
 
 def _check_config(workspace: Path) -> CheckResult:
@@ -316,7 +370,7 @@ def run_doctor(
     checks: list[Callable[[], CheckResult]] = [
         _check_package_import,
         _check_pytest_plugin,
-        _check_cursor_sdk,
+        lambda: _check_provider_sdk(workspace),
         _check_playwright_browsers,
         _check_npx,
         lambda: _check_mcp_json(workspace),
@@ -342,9 +396,14 @@ def format_report(results: list[CheckResult]) -> str:
     warns = sum(1 for r in results if r.status == "warn")
     lines.append("")
     lines.append(f"Summary: {errors} error(s), {warns} warning(s)")
-    if any(r.name == "CURSOR_API_KEY" and r.status == "warn" for r in results):
-        lines.append("Note: failure capture, scan, stub propose, review, and apply work without CURSOR_API_KEY.")
-        lines.append("      Automated MCP propose (mcp_propose_runner / HEALING_MCP_AUTO) needs the key.")
+    if any(r.name == "LLM API key" and r.status == "warn" for r in results):
+        lines.append(
+            "Note: failure capture, scan, stub propose, review, and apply work without an LLM key."
+        )
+        lines.append(
+            "      Automated MCP propose needs HEALING_LLM_PROVIDER + matching key "
+            "(CURSOR_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY)."
+        )
     if any(r.name == "mcp.json" for r in results):
         lines.append("Note: Cursor Settings → MCP is only for interactive IDE use.")
         lines.append("      CLI mcp_propose_runner starts Playwright MCP via stdio on its own.")

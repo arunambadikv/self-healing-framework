@@ -13,13 +13,15 @@ Project status: [PROJECT_STATUS.md](PROJECT_STATUS.md)
 |-------------|-------------|--------|
 | Python **3.10+** | Always | |
 | pip + venv | Always | |
-| `healing` or `healing[mcp]` | Always | Core package |
+| `healing` or `healing[propose]` | Always | Core; use `[propose]` for all LLM providers |
 | Chromium via Playwright | Running real browser tests | `playwright install chromium` |
-| Node.js 18+ / **`npx`** | Automated MCP propose | Playwright MCP runs via `npx @playwright/mcp` |
-| **`CURSOR_API_KEY`** | Automated MCP propose only | Put in `.env` (never commit `.env`) |
+| Node.js 18+ / **`npx`** | Automated MCP propose | Playwright MCP runs via pinned `@playwright/mcp` |
+| **`HEALING_LLM_PROVIDER` + matching key** | Automated MCP propose only | `cursor`→`CURSOR_API_KEY`, `openai`→`OPENAI_API_KEY`, `anthropic`→`ANTHROPIC_API_KEY` |
 | Cursor IDE + MCP panel | Interactive slash-skill browser repair | **Not** required for CLI/`mcp_propose_runner` |
 
 **Not required** for failure capture, architecture scan, stub propose, human review, or apply: API key, Node, or Cursor MCP settings.
+
+Extras: `healing[mcp]` (Cursor only), `healing[openai]`, `healing[anthropic]`, or `healing[propose]` (all).
 
 ---
 
@@ -30,9 +32,10 @@ Project status: [PROJECT_STATUS.md](PROJECT_STATUS.md)
 python -m venv .venv && source .venv/bin/activate
 
 # 2. Install the package
-pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+pip install "healing[propose] @ git+https://github.com/arunambadikv/self-healing-framework.git"
 # Same machine / local checkout:
-# pip install -e "/path/to/self-healing-framework[mcp]"
+# pip install -e "/path/to/self-healing-framework[propose]"
+# Provider-specific: healing[mcp] | healing[openai] | healing[anthropic]
 
 # 3. Browser binaries
 playwright install chromium
@@ -42,7 +45,7 @@ healing-init
 
 # 5. Secret for automated propose (optional until you need MCP propose)
 cp .env.example .env
-# edit .env → CURSOR_API_KEY=cursor_...
+# edit .env → HEALING_LLM_PROVIDER=cursor|openai|anthropic + matching API key
 
 # 6. Re-check anytime
 healing-doctor
@@ -58,9 +61,12 @@ Optional auto chain after healable locator failures (`selector_break` only — n
 ```bash
 # in .env (loaded automatically — no export needed):
 # HEALING_MCP_AUTO=1
-# CURSOR_API_KEY=cursor_...
+# HEALING_LLM_PROVIDER=cursor   # or openai | anthropic
+# CURSOR_API_KEY=...            # or OPENAI_API_KEY / ANTHROPIC_API_KEY
 pytest tests/ -v
 ```
+
+**CI from git install:** see [CONSUMER_CI.md](CONSUMER_CI.md) for a propose-on-failure workflow using the same secrets.
 
 ---
 
@@ -86,7 +92,7 @@ Manual: `healing-scan` or `python -m healing.architecture_scan`.
 | `healer-artifacts/auth/` | Saved storage state (when used) |
 | `.cursor/skills/` | Operator skills (also bundled in the package) |
 | `.cursor/mcp.json` | Playwright MCP stub for Cursor / CLI |
-| `.env.example` | Template for `CURSOR_API_KEY` / toggles |
+| `.env.example` | Template for `HEALING_LLM_PROVIDER` / API keys / toggles |
 
 Flags:
 
@@ -115,12 +121,13 @@ healing-doctor --strict        # exit 1 on warnings as well as errors
 |-------|-----------------|
 | healing package | `import healing` works |
 | pytest plugin | `pytest11` entry `healing` registered |
-| cursor-sdk | Present when you installed `healing[mcp]` |
+| LLM SDK | Provider SDK installed (`cursor-sdk` / `openai`+`mcp` / `anthropic`+`mcp`) |
 | chromium | Browser binary installed |
 | npx (Node) | Available for Playwright MCP |
 | mcp.json | `.cursor/mcp.json` present |
-| CURSOR_API_KEY | Set in env or `.env` |
+| LLM API key | Matching key for `HEALING_LLM_PROVIDER` |
 | healing.toml | Config under `healer-artifacts/` (or `[tool.healing]`) |
+| pages dir | Page objects present |
 | artifact dirs | Runtime folders exist |
 | skills | Resolvable from workspace or package templates |
 
@@ -130,7 +137,7 @@ Warnings for API key / Node / MCP are OK if you only need capture → review →
 
 ## CLI reference
 
-Installed with the package (`pip install healing` / `healing[mcp]`):
+Installed with the package (`pip install healing` / `healing[propose]`):
 
 | Command | Module | Role |
 |---------|--------|------|
@@ -138,7 +145,7 @@ Installed with the package (`pip install healing` / `healing[mcp]`):
 | `healing-doctor` | `healing.doctor` | Setup / dependency checks |
 | `healing-scan` | `healing.architecture_scan` | Refresh architecture manifest |
 | `healing-propose` | `healing.pom_propose` | Stub patches from failures |
-| `healing-mcp-propose` | `healing.mcp_propose_runner` | Complete patches via Cursor SDK + Playwright MCP |
+| `healing-mcp-propose` | `healing.mcp_propose_runner` | Complete patches via LLM + Playwright MCP |
 | `healing-review` | `healing.healing_review` | List / heal / skip / defer |
 | `healing-gates` | `healing.ci_gates` | CI policy + queue gates |
 
@@ -151,8 +158,9 @@ Installed with the package (`pip install healing` / `healing[mcp]`):
 | Auto-capture failures | `pytest` (plugin) | pip + chromium for browser tests |
 | Architecture scan | `healing-scan` | pip |
 | Stub propose | `healing-propose --process-all` | pip |
-| MCP propose | `healing-mcp-propose --process-all` | `CURSOR_API_KEY`, Node/`npx`, `healing[mcp]` |
+| MCP propose | `healing-mcp-propose --process-all` | provider key, Node/`npx`, `healing[propose]` (or provider extra) |
 | Auto chain | `HEALING_MCP_AUTO=1` in `.env`, then `pytest` | same as MCP propose |
+| CI propose-on-failure | see [CONSUMER_CI.md](CONSUMER_CI.md) | repo secrets + git install |
 | Human review / apply | `healing-review --interactive` | pip |
 | Interactive slash skills | Cursor `/healing-*` | skills + optional IDE MCP |
 
@@ -199,7 +207,7 @@ Page objects may call `page.locator(...).click()` directly. The installed pytest
 pytest tests/ -v
 healing-scan
 healing-propose --process-all
-healing-mcp-propose --process-all    # needs CURSOR_API_KEY
+healing-mcp-propose --process-all    # needs HEALING_LLM_PROVIDER + matching API key
 healing-review --list
 healing-review --interactive         # or --patch P-<id> --decision heal
 ```
@@ -216,7 +224,7 @@ Artifacts:
 | Symptom | Fix |
 |---------|-----|
 | No failure files after pytest | Confirm `import healing` and `healing-doctor` shows pytest plugin OK; reinstall package |
-| `CURSOR_API_KEY required` | Copy `.env.example` → `.env`, set key, re-run propose |
+| LLM API key required / propose failed | Set `HEALING_LLM_PROVIDER` and matching `CURSOR_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` in `.env` |
 | MCP / npx errors | Install Node 18+; run `healing-doctor --verify-mcp` |
 | Chromium missing | `playwright install chromium` |
 | Skills missing in Cursor | Re-run `healing-init` (or rely on package templates) |
@@ -228,10 +236,10 @@ Artifacts:
 
 ```bash
 # From GitHub (default branch)
-pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+pip install "healing[propose] @ git+https://github.com/arunambadikv/self-healing-framework.git"
 
 # Specific branch
-pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git@dev"
+pip install "healing[propose] @ git+https://github.com/arunambadikv/self-healing-framework.git@dev"
 
 # Editable local checkout (same machine as this repo)
 pip install -e "/home/arun/playwright-healing-framework[mcp]"

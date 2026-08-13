@@ -1,11 +1,9 @@
-"""Run Cursor SDK + Playwright MCP to complete healing patch proposals."""
+"""Complete healing patch proposals via LLM provider + Playwright MCP."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +13,7 @@ from healing.healing_queue import (
     load_failure_payload,
     select_latest_awaiting_patches,
 )
+from healing.llm_config import LlmConfig, missing_key_message, resolve_llm_config
 from healing.paths import QUEUE_PATCHES, ensure_queue_dirs
 from healing.skill_paths import load_skill_text
 
@@ -28,55 +27,6 @@ def resolve_storage_state_path(failure: dict[str, Any], workspace: Path) -> Path
     if not path.is_absolute():
         path = workspace / path
     return path if path.exists() else None
-
-
-def _with_storage_state_args(args: list[str], storage_state: Path) -> list[str]:
-    cleaned = [a for a in args if a != "--isolated" and not str(a).startswith("--storage-state")]
-    cleaned.append("--isolated")
-    cleaned.append(f"--storage-state={storage_state.resolve()}")
-    return cleaned
-
-
-def _load_mcp_servers(
-    workspace: Path,
-    *,
-    storage_state: Path | None = None,
-) -> dict[str, Any]:
-    """Load Playwright MCP stdio config from .cursor/mcp.json."""
-    from cursor_sdk import StdioMcpServerConfig
-
-    mcp_path = workspace / ".cursor" / "mcp.json"
-    command = "npx"
-    from healing.mcp_constants import PLAYWRIGHT_MCP_PACKAGE
-
-    args: list[str] = [PLAYWRIGHT_MCP_PACKAGE]
-    env: dict[str, str] = {}
-
-    if mcp_path.exists():
-        data = json.loads(mcp_path.read_text(encoding="utf-8"))
-        servers = data.get("mcpServers") or {}
-        playwright = servers.get("playwright") or servers.get(
-            "project-0-playwright-healing-framework-playwright"
-        )
-        if playwright and playwright.get("command"):
-            command = playwright["command"]
-            args = list(playwright.get("args") or [])
-            env = dict(playwright.get("env") or {})
-
-    if storage_state is not None:
-        args = _with_storage_state_args(args, storage_state)
-        env = {
-            **env,
-            "PLAYWRIGHT_MCP_STORAGE_STATE": str(storage_state.resolve()),
-        }
-
-    return {
-        "playwright": StdioMcpServerConfig(
-            command=command,
-            args=args,
-            env=env,
-        )
-    }
 
 
 def _workspace_relative(path: Path, workspace: Path) -> str:
@@ -143,30 +93,33 @@ def run_sdk_propose(
     workspace: Path,
     api_key: str,
     storage_state: Path | None = None,
+    config: LlmConfig | None = None,
 ) -> str:
-    from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
+    """Back-compat wrapper: run propose with resolved or explicit Cursor-style config."""
+    from healing.propose_providers import get_provider
 
-    from healing.mcp_constants import DEFAULT_MCP_MODEL
-
-    model = os.environ.get("HEALING_MCP_MODEL", "").strip() or DEFAULT_MCP_MODEL
-    mcp_servers = _load_mcp_servers(workspace, storage_state=storage_state)
-    # Agent.prompt is synchronous; incomplete patches fail closed after return
-    # (see is_patch_complete with check_source). No separate SDK timeout API is wired.
-    result = Agent.prompt(
-        prompt,
-        AgentOptions(
-            api_key=api_key,
-            model=model,
-            local=LocalAgentOptions(cwd=str(workspace)),
-            mcp_servers=mcp_servers,
-        ),
+    if config is None:
+        config = resolve_llm_config()
+        if api_key:
+            config = LlmConfig(
+                provider=config.provider,
+                api_key=api_key,
+                model=config.model,
+                key_env=config.key_env,
+            )
+    provider = get_provider(config)
+    return provider.run_propose(
+        prompt, workspace=workspace, config=config, storage_state=storage_state
     )
-    if result.status == "error":
-        raise RuntimeError(f"SDK agent run failed: {result.result}")
-    return str(result.result or "")
 
 
-def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str | None) -> bool:
+def process_patch_entry(
+    entry: dict[str, Any],
+    *,
+    workspace: Path,
+    api_key: str | None = None,
+    config: LlmConfig | None = None,
+) -> bool:
     patch_id = entry.get("patch_id")
     if not patch_id:
         print(f"[skip] {entry.get('failure_id')}: no patch_id")
@@ -186,14 +139,19 @@ def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str 
         print(f"[ok] {patch_id} already complete → patch_ready")
         return True
 
-    if not api_key:
-        print(
-            f"[error] {patch_id}: CURSOR_API_KEY required for MCP propose runner.\n"
-            "  Capture/scan/stub/review/apply work without it.\n"
-            "  Install SDK: pip install 'healing[mcp]'\n"
-            "  Set key:      export CURSOR_API_KEY=cursor_...  (or put it in .env)\n"
-            "  Check:        healing-doctor"
-        )
+    if config is None:
+        config = resolve_llm_config()
+        if api_key:
+            # Legacy callers that only passed CURSOR_API_KEY
+            config = LlmConfig(
+                provider=config.provider,
+                api_key=api_key,
+                model=config.model,
+                key_env=config.key_env,
+            )
+
+    if not config.has_key:
+        print(f"[error] {patch_id}: {missing_key_message(config)}")
         return False
 
     storage_state: Path | None = None
@@ -211,17 +169,22 @@ def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str 
         print(f"[healing] No storage_state for {patch_id} — agent will use page_url / step replay")
 
     prompt = build_agent_prompt(entry, workspace, storage_state=storage_state)
-    print(f"[healing] Running SDK + Playwright MCP for {patch_id}...")
+    print(
+        f"[healing] Running {config.provider} + Playwright MCP for {patch_id} "
+        f"(model={config.model})..."
+    )
     try:
-        summary = run_sdk_propose(
+        from healing.propose_providers import get_provider
+
+        summary = get_provider(config).run_propose(
             prompt,
             workspace=workspace,
-            api_key=api_key,
+            config=config,
             storage_state=storage_state,
         )
         print(f"[healing] Agent: {summary[:200]}")
     except Exception as exc:
-        print(f"[error] SDK propose failed for {patch_id}: {exc}")
+        print(f"[error] Propose failed for {patch_id}: {exc}")
         return False
 
     payload = json.loads(patch_path.read_text(encoding="utf-8"))
@@ -244,7 +207,9 @@ def process_patch_entry(entry: dict[str, Any], *, workspace: Path, api_key: str 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Complete healing patches via Cursor SDK + Playwright MCP.")
+    parser = argparse.ArgumentParser(
+        description="Complete healing patches via LLM provider + Playwright MCP."
+    )
     parser.add_argument("--list", action="store_true", help="List patches awaiting agent.")
     parser.add_argument("--process-all", action="store_true", help="Process all awaiting_agent patches.")
     parser.add_argument("--patch-id", help="Process single patch id.")
@@ -270,7 +235,7 @@ def main() -> int:
             print(f"- {entry.get('patch_id')} (failure {entry.get('failure_id')})")
         return 0
 
-    api_key = os.environ.get("CURSOR_API_KEY", "").strip() or None
+    config = resolve_llm_config()
 
     if args.patch_id:
         entry = next(
@@ -280,7 +245,7 @@ def main() -> int:
         if entry is None:
             print(f"Patch not awaiting agent: {args.patch_id}")
             return 1
-        return 0 if process_patch_entry(entry, workspace=workspace, api_key=api_key) else 1
+        return 0 if process_patch_entry(entry, workspace=workspace, config=config) else 1
 
     if args.process_all:
         awaiting = select_latest_awaiting_patches()
@@ -296,9 +261,10 @@ def main() -> int:
             )
         else:
             print(f"[healing] Processing {len(awaiting)} patch(es) newest-first")
+        print(f"[healing] Provider={config.provider} model={config.model}")
         ok = 0
         for entry in awaiting:
-            if process_patch_entry(entry, workspace=workspace, api_key=api_key):
+            if process_patch_entry(entry, workspace=workspace, config=config):
                 ok += 1
         print(f"[healing] Completed {ok}/{len(awaiting)} patches")
         return 0 if ok == len(awaiting) else 1

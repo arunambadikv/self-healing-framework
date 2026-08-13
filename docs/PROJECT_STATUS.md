@@ -9,6 +9,8 @@
 Playwright Python POM healing framework, now **installable** (`pip install -e ".[mcp]"` / git URL) with `/healing-init` for consumer frameworks. Tests use page-object fixtures; locator failures are captured automatically, classified, queued, and repaired through propose → MCP verify → human review → apply. **Human review is required** before any change lands in `pages/*.py` (decision once; agent executes with `--yes`).
 
 **Hardening (2026-08):** apply validation allowlist + rollback; patch structure/`before` source checks; packaged `ci_gates_config.yaml` for pip consumers; pinned `@playwright/mcp@0.0.79`; queue `fcntl` lock + atomic index writes; `--json` / `--list-deferred` CLIs; doctor pages/.env checks.
+
+**Multi-LLM (2026-08-12):** `HEALING_LLM_PROVIDER=cursor|openai|anthropic` with matching API keys; CI propose-on-failure and [CONSUMER_CI.md](CONSUMER_CI.md) for git-installed consumers.
 **Target app:** configurable via `HEALING_BASE_URL` (default: OrangeHRM demo login). Opt-in healing demos in `tests/test_orangehrm_healing.py` and `tests/test_saucedemo_healing.py`.
 
 **Current focus:** `dev` has the MCP propose runner and failure-gated `HEALING_MCP_AUTO` chain; merge to `main` via PR when CI is green.
@@ -26,7 +28,7 @@ Playwright Python POM healing framework, now **installable** (`pip install -e ".
 | Architecture scan + manifest | Done | `healing/architecture_scan.py` → `healer-artifacts/architecture/` |
 | Architecture daily heartbeat | Done | GHA cron + Cursor Automation draft ([docs/ARCHITECTURE_HEARTBEAT.md](ARCHITECTURE_HEARTBEAT.md)) |
 | Stub patch propose (P-*) | Done | `healing/pom_propose.py` |
-| MCP propose (Cursor SDK) | Done | `healing/mcp_propose_runner.py` (needs `CURSOR_API_KEY`) |
+| MCP propose (multi-LLM + Playwright MCP) | Done | `healing/mcp_propose_runner.py` (`HEALING_LLM_PROVIDER` + key) |
 | Post-test auto chain (opt-in) | Done | `healing/post_test.py`, `healing/session_state.py` |
 | Human review + apply | Done | `healing/healing_review.py` (`--yes`, screenshots, deferred) |
 | Installable package + init | Done | `pyproject.toml`, `healing/init.py`, `/healing-init` |
@@ -157,7 +159,7 @@ cat healer-artifacts/healing-queue/index.json
 **GitHub Actions** (on push/PR to `main` / `master`):
 
 1. **test** — `pytest`, architecture scan, upload artifacts  
-2. **propose-on-failure** — stub + `mcp_propose_runner` (needs `CURSOR_API_KEY` secret)  
+2. **propose-on-failure** — stub + `mcp_propose_runner` (needs provider secret: `CURSOR_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`)  
 3. **healing-gates** — `python -m healing.ci_gates`
 
 **Open item:** PR `dev` → `main` for commit `cd38e51`.
@@ -178,7 +180,7 @@ python -m healing.healing_review --patch P-<id> --decision heal
 
 # Opt-in auto chain (new stub per session failure; MCP + review prefer latest patch)
 export HEALING_MCP_AUTO=1
-export CURSOR_API_KEY=cursor_...
+# set HEALING_LLM_PROVIDER + matching key in .env
 pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run-healing-demo -v
 
 # End-to-end demo runbook
@@ -191,6 +193,7 @@ pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run
 
 | Date | Change |
 |------|--------|
+| 2026-08-12 | Multi-provider propose (`cursor`/`openai`/`anthropic`); CI + consumer git docs |
 | 2026-08-06 | High/medium hardening: apply security, patch validate, MCP pin, package config, queue lock, DX CLIs |
 | 2026-07-22 | Always create new stubs per failure; MCP/review prefer latest patch (newest-first; one MCP per architecture_ref) |
 | 2026-07-22 | Auto chain scoped to this session's failures + newly created stubs; classifier treats chrome-error/goto as non-healable |

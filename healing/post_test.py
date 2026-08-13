@@ -85,11 +85,12 @@ def run_mcp_propose_all(workspace: Path) -> int:
     """Complete the latest session patch(es) via MCP (newest first; one per architecture_ref)."""
     from healing.doctor import load_dotenv_files
     from healing.healing_queue import select_latest_awaiting_patches
+    from healing.llm_config import resolve_llm_config
     from healing.mcp_propose_runner import process_patch_entry
     from healing.session_state import session_new_patch_ids
 
     load_dotenv_files(workspace)
-    api_key = os.environ.get("CURSOR_API_KEY", "").strip() or None
+    config = resolve_llm_config()
     session_patches = session_new_patch_ids()
     if not session_patches:
         print(
@@ -122,14 +123,15 @@ def run_mcp_propose_all(workspace: Path) -> int:
     latest = session_entries[0]
     print(
         f"[healing] mcp_propose_runner: processing latest patch "
-        f"{latest.get('patch_id')} first ({len(session_entries)} session patch(es))"
+        f"{latest.get('patch_id')} first ({len(session_entries)} session patch(es); "
+        f"provider={config.provider})"
     )
 
     rc = 0
     for entry in session_entries:
         patch_id = entry.get("patch_id")
         try:
-            if not process_patch_entry(entry, workspace=workspace, api_key=api_key):
+            if not process_patch_entry(entry, workspace=workspace, config=config):
                 rc = 1
         except Exception as exc:
             print(f"[healing] mcp_propose_runner failed for {patch_id}: {exc}")

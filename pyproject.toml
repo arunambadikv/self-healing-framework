@@ -21,7 +21,10 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = ["cursor-sdk"]
-dev = ["cursor-sdk"]
+openai = ["openai", "mcp"]
+anthropic = ["anthropic", "mcp"]
+propose = ["cursor-sdk", "openai", "anthropic", "mcp"]
+dev = ["cursor-sdk", "openai", "anthropic", "mcp"]
 
 [project.scripts]
 healing-scan = "healing.architecture_scan:main"

@@ -20,7 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HEALING_DEMO_HEADLESS: "1"
+      HEALING_LLM_PROVIDER: ${{ vars.HEALING_LLM_PROVIDER || 'cursor' }}
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      HEALING_LLM_MODEL: ${{ vars.HEALING_LLM_MODEL || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[mcp]"
+          pip install -e ".[propose]"
           playwright install chromium
 
       - name: Reset intentional demo breaks
@@ -88,12 +92,26 @@ jobs:
       - name: Stub propose
         run: python -m healing.pom_propose --process-all
 
+      - name: Detect propose key
+        id: llm
+        run: |
+          python - <<'PY'
+          import os
+          from healing.llm_config import resolve_llm_config
+          cfg = resolve_llm_config()
+          print(f"provider={cfg.provider}")
+          print(f"has_key={'true' if cfg.has_key else 'false'}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"provider={cfg.provider}\n")
+              fh.write(f"has_key={'true' if cfg.has_key else 'false'}\n")
+          PY
+
       - name: MCP propose
-        if: ${{ env.CURSOR_API_KEY != '' }}
+        if: ${{ steps.llm.outputs.has_key == 'true' }}
         run: python -m healing.mcp_propose_runner --process-all
 
       - name: Assert patch_ready (when MCP ran)
-        if: ${{ env.CURSOR_API_KEY != '' }}
+        if: ${{ steps.llm.outputs.has_key == 'true' }}
         run: |
           python - <<'PY'
           import json
@@ -112,9 +130,9 @@ jobs:
           PY
 
       - name: Stub-only note when no API key
-        if: ${{ env.CURSOR_API_KEY == '' }}
+        if: ${{ steps.llm.outputs.has_key != 'true' }}
         run: |
-          echo "::warning::CURSOR_API_KEY secret not set — skipped MCP propose / patch_ready assert"
+          echo "::warning::No API key for HEALING_LLM_PROVIDER=${{ steps.llm.outputs.provider }} — skipped MCP propose / patch_ready assert"
           ls -la healer-artifacts/healing-queue/patches/ || true
 
       - name: Upload artifacts
