@@ -28,7 +28,8 @@ DEFAULT_ENV_EXAMPLE = """\
 HEALING_LLM_PROVIDER=cursor
 CURSOR_API_KEY=
 OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+GROQ_API_KEY=
 # HEALING_LLM_MODEL=
 
 # Opt-in: after healable locator failures, auto-run scan → stub → MCP propose
@@ -148,11 +149,16 @@ def init_workspace(
         "workspace": str(workspace),
         "healing_toml": _write_healing_toml(workspace, force=force),
         "mcp": _write_mcp_stub(workspace, force=force),
-        "env_example": _write_env_example(workspace, force=force),
         "playwright_browsers": _ensure_playwright_browsers(workspace),
-        "skills": _copy_skill_templates(workspace, force=force),
+        "env_example": None,
+        "skills": [],
         "scan": None,
     }
+    from healing.package_sync import refresh_packaged_assets
+
+    assets = refresh_packaged_assets(workspace, force=True)
+    result["env_example"] = assets.get("env_example")
+    result["skills"] = assets.get("skills") or []
 
     pages = workspace / "pages"
     if scan and pages.exists() and any(pages.glob("*.py")):
@@ -209,7 +215,7 @@ def main() -> int:
         for path in skills:
             print(f"    - {path}")
     else:
-        print("  skills already present (use --force to refresh)")
+        print("  skills refreshed from package templates")
     print("  healer-artifacts/ directories ensured")
     browsers = result.get("playwright_browsers")
     if browsers:
@@ -221,7 +227,6 @@ def main() -> int:
     print("  3. pytest tests/ -v")
     print("  4. optional: set HEALING_MCP_AUTO=1 in .env, then pytest tests/ -v")
     print("  healing-doctor          # re-check setup anytime")
-    print("  Install extras: healing[propose] | [mcp] | [openai] | [anthropic]")
     print("  Full guide: docs/CONSUMER_SETUP.md (in the healing package repo)")
     scan = result.get("scan")
     if isinstance(scan, dict):

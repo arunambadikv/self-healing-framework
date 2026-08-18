@@ -309,6 +309,10 @@ def import_ci_artifacts(
                 shutil.rmtree(root.cleanup)
                 result.cleaned.append(root.name)
 
+    if not dry_run:
+        from healing.healing_queue import archive_terminal_patch_files
+
+        archive_terminal_patch_files()
     return result
 
 

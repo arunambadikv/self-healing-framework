@@ -213,11 +213,17 @@ def main() -> int:
 
     load_dotenv_files(workspace)
     ensure_queue_dirs()
+    from healing.package_sync import refresh_packaged_assets_if_stale
+
+    refresh_packaged_assets_if_stale(workspace)
     from healing.artifact_import import import_ci_artifacts
 
     imported = import_ci_artifacts(workspace)
     if imported.imported:
         print(imported.summary_line())
+    from healing.healing_queue import archive_terminal_patch_files
+
+    archive_terminal_patch_files()
 
     no_action = not any(
         [

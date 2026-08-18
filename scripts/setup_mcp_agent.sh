@@ -14,7 +14,7 @@ fi
 
 [[ -f "${ROOT}/.cursor/mcp.json" ]] && echo "OK: .cursor/mcp.json" || echo "WARN: missing .cursor/mcp.json"
 
-mkdir -p artifacts/failures artifacts/healing-queue/patches artifacts/architecture
+mkdir -p healer-artifacts/failures healer-artifacts/healing-queue/patches healer-artifacts/architecture
 echo "OK: artifact directories"
 
 cat <<'EOF'
@@ -24,7 +24,7 @@ cat <<'EOF'
 1. Open repo in Cursor.
 2. Settings → MCP → Add server from .cursor/mcp.json:
    command: npx
-   args: ["@playwright/mcp@latest"]
+   args: ["@playwright/mcp@0.0.79"]
 3. Confirm MCP connected in the panel.
 
 --- POM healing workflow ---
@@ -32,9 +32,11 @@ cat <<'EOF'
   pytest tests/ -v
   python -m healing.architecture_scan
   python -m healing.pom_propose --process-all
-  # Agent: complete patches in artifacts/healing-queue/patches/ (see AGENTS.md)
+  python -m healing.mcp_propose_runner --process-all   # needs HEALING_LLM_PROVIDER + key
+  # Completed P-* files live in healer-artifacts/healing-queue/patches/ until review
   python -m healing.healing_review --list
   python -m healing.healing_review --patch P-<id> --decision heal
+  # After heal/skip, json/md/agent-task move to applied/ or skipped/
 
 See AGENTS.md for slash skills: /architecture-discovery, /healing-propose, /healing-review
 

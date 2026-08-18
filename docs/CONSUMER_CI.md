@@ -6,11 +6,12 @@ Minimal GitHub Actions pattern for a POM repo that installs healing from git.
 
 | Name | Type | Purpose |
 |------|------|---------|
-| `HEALING_LLM_PROVIDER` | Repository **variable** (optional) | `cursor` (default), `openai`, or `anthropic` |
-| `HEALING_LLM_MODEL` | Variable (optional) | Override default model |
+| `HEALING_LLM_PROVIDER` | Repository **variable** (optional) | `cursor` (default), `openai`, `gemini`, or `groq` |
+| `HEALING_LLM_MODEL` | Variable (optional) | Override default (`composer-2.5` / `gpt-4.1` / `gemini-3.6-flash` / `openai/gpt-oss-120b`) |
 | `CURSOR_API_KEY` | Secret | When provider=`cursor` |
 | `OPENAI_API_KEY` | Secret | When provider=`openai` |
-| `ANTHROPIC_API_KEY` | Secret | When provider=`anthropic` |
+| `GEMINI_API_KEY` | Secret | When provider=`gemini` |
+| `GROQ_API_KEY` | Secret | When provider=`groq` |
 
 ## Workflow sketch
 
@@ -30,7 +31,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: |
-          pip install "healing[propose] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+          pip install "healing @ git+https://github.com/arunambadikv/self-healing-framework.git"
           playwright install chromium
           # optional in-job auto chain (needs matching secret):
           # echo "HEALING_MCP_AUTO=1" >> "$GITHUB_ENV"
@@ -57,7 +58,8 @@ jobs:
       HEALING_LLM_PROVIDER: ${{ vars.HEALING_LLM_PROVIDER || 'cursor' }}
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -71,7 +73,7 @@ jobs:
           name: healing-artifacts
           path: .
       - run: |
-          pip install "healing[propose] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+          pip install "healing @ git+https://github.com/arunambadikv/self-healing-framework.git"
           playwright install chromium
       - run: python -m healing.pom_propose --process-all
       - run: python -m healing.mcp_propose_runner --process-all

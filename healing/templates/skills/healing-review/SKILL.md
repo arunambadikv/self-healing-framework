@@ -18,7 +18,7 @@ Human-in-the-loop is **only at the decision**. After the user picks Heal / Skip 
 
 ### Terminal (recommended)
 
-`healing-review` auto-merges leftover `gh run download` folders (e.g. `healing-pipeline-e2e/`) into `healer-artifacts/` on startup. After CI:
+`healing-review` auto-merges leftover `gh run download` folders (e.g. `healing-pipeline-e2e/`) into `healer-artifacts/` on startup, then **archives applied/skipped patch files** so they do not sit in pending `patches/` (including `-agent-task.md` and CI re-imports). After CI:
 
 ```bash
 gh run download
@@ -58,7 +58,7 @@ python -m healing.healing_review --list
 python -m healing.healing_review --patch P-<id> --decision heal --yes
 ```
 
-`--yes` confirms high-risk patches when the user already approved in chat. Runs validation, updates `pages/*.py` via `healing.pom_apply`, moves patch to `applied/`. Report success/failure; then continue to the next patch.
+`--yes` confirms high-risk patches when the user already approved in chat. Runs validation, updates `pages/*.py` via `healing.pom_apply`, then **moves all related pending files** (`P-<id>.json`, `.md`, `-agent-task.md`) to `healer-artifacts/healing-queue/applied/`. Pending `patches/` must not keep leftovers. Report success/failure; then continue to the next patch.
 
 Prefer the CLI over hand-editing so only `architecture_updates[].file` under `pages/` are touched.
 
@@ -68,7 +68,7 @@ Prefer the CLI over hand-editing so only `architecture_updates[].file` under `pa
 python -m healing.healing_review --patch P-<id> --decision skip --reason "suspected app regression" --yes
 ```
 
-If the user did not give a reason, ask once for a short reason, then run skip. Writes `healer-artifacts/healing-queue/skipped/P-<id>-rca.md`.
+If the user did not give a reason, ask once for a short reason, then run skip. Writes `healer-artifacts/healing-queue/skipped/P-<id>-rca.md` and moves `P-<id>.json` / `.md` / `-agent-task.md` out of pending `patches/` into `skipped/`.
 
 ### Defer (after user chose Defer)
 

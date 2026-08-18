@@ -203,7 +203,7 @@ python -m healing.healing_review --patch P-<id> --decision heal
 | Capture | `classification: selector_break`, queue `pending_proposal` |
 | Stub propose | `P-{test-name}-{stamp}.json`, `P-…-agent-task.md`, queue `awaiting_agent` |
 | MCP complete | MCP loads `storage_state` (or replays steps) → `page_url` → snapshot → real `after`, queue `patch_ready` |
-| Human heal | `pages/*.py` updated, queue `applied` |
+| Human heal | `pages/*.py` updated, queue `applied`; `P-*` files leave pending `patches/` → `applied/` |
 
 ## Verify normal CI stays green
 

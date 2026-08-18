@@ -32,6 +32,8 @@ STATUSES = frozenset(
 )
 
 TERMINAL_STATUSES = frozenset({"applied", "skipped", "deferred"})
+ARCHIVE_STATUSES = frozenset({"applied", "skipped"})
+PATCH_FILE_SUFFIXES = (".json", ".md", "-agent-task.md")
 
 try:
     import fcntl
@@ -315,13 +317,55 @@ def update_patch_status(patch_id: str, status: str, *, notes: str = "") -> None:
 
 
 def move_patch_file(patch_id: str, dest_dir: Path) -> None:
-    for ext in (".json", ".md"):
-        src = QUEUE_PATCHES / f"{patch_id}{ext}"
-        if src.exists():
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            dest = dest_dir / src.name
+    """Move all files for a patch out of pending patches/. Keep existing dest files."""
+    dest_dir = Path(str(dest_dir))
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_json: Path | None = None
+    dest_md: Path | None = None
+    for suffix in PATCH_FILE_SUFFIXES:
+        src = Path(str(QUEUE_PATCHES / f"{patch_id}{suffix}"))
+        if not src.exists():
+            continue
+        dest = dest_dir / src.name
+        if dest.exists():
+            src.unlink()
+        else:
             dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
             src.unlink()
+        if suffix == ".json":
+            dest_json = dest
+        elif suffix == ".md":
+            dest_md = dest
+
+    if dest_json is None and dest_md is None:
+        return
+
+    def _mutate(index: dict[str, Any]) -> None:
+        entry = _find_entry(index, patch_id=patch_id)
+        if entry is None:
+            return
+        if dest_json is not None:
+            entry["patch_json"] = str(dest_json.resolve())
+        if dest_md is not None:
+            entry["patch_md"] = str(dest_md.resolve())
+
+    _mutate_index(_mutate)
+
+
+def archive_terminal_patch_files() -> int:
+    """Remove applied/skipped patch files from pending patches/ (including re-imports)."""
+    moved = 0
+    index = _load_index()
+    for entry in index.get("entries", []):
+        status = entry.get("status")
+        patch_id = entry.get("patch_id")
+        if not patch_id or status not in ARCHIVE_STATUSES:
+            continue
+        dest = QUEUE_APPLIED if status == "applied" else QUEUE_SKIPPED
+        if any(Path(str(QUEUE_PATCHES / f"{patch_id}{suffix}")).exists() for suffix in PATCH_FILE_SUFFIXES):
+            move_patch_file(str(patch_id), dest)
+            moved += 1
+    return moved
 
 
 def _entry_key(entry: dict[str, Any]) -> str:

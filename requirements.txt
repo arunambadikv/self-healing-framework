@@ -4,4 +4,7 @@ pytest-playwright
 pyyaml
 rich
 python-dotenv
+# Propose SDKs (also declared in pyproject.toml core deps)
 cursor-sdk
+openai
+mcp

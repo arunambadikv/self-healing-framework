@@ -17,12 +17,13 @@ Full consumer steps, CLI reference, and troubleshooting: **[docs/CONSUMER_SETUP.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install "healing[propose] @ git+https://github.com/arunambadikv/self-healing-framework.git"
-# or local: pip install -e "/path/to/self-healing-framework[propose]"
+pip install "healing @ git+https://github.com/arunambadikv/self-healing-framework.git"
+# or local: pip install -e "/path/to/self-healing-framework"
 playwright install chromium
 cd /path/to/your-pom-project
 healing-init                 # config, artifacts, skills, .cursor/mcp.json, .env.example + doctor
 cp .env.example .env         # set HEALING_LLM_PROVIDER + matching API key for MCP propose
+# defaults: composer-2.5 / gpt-4.1 / gemini-3.6-flash / openai/gpt-oss-120b
 healing-doctor               # re-check anytime; add --verify-mcp to probe npx Playwright MCP
 pytest tests/ -v
 # optional auto propose: set HEALING_MCP_AUTO=1 in .env (loaded automatically)
@@ -35,7 +36,7 @@ pytest tests/ -v
 | Capability | Needs |
 |------------|--------|
 | Capture, scan, stub propose, review, apply | Nothing beyond pip + chromium |
-| Automated MCP propose (`mcp_propose_runner` / `HEALING_MCP_AUTO`) | `HEALING_LLM_PROVIDER` + matching key in `.env`, Node/`npx`, `healing[propose]` (or `[mcp]`/`[openai]`/`[anthropic]`) |
+| Automated MCP propose (`mcp_propose_runner` / `HEALING_MCP_AUTO`) | `HEALING_LLM_PROVIDER` + matching key in `.env`, Node/`npx` (`cursor`/`openai`/`gemini`/`groq`) |
 | CI propose-on-failure | Same secrets as repo variables — see [docs/CONSUMER_CI.md](docs/CONSUMER_CI.md) |
 | Interactive Cursor slash repair | Enable Playwright MCP from `.cursor/mcp.json` in Cursor Settings (IDE only — CLI propose starts MCP via stdio itself) |
 
@@ -44,7 +45,7 @@ pytest tests/ -v
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[propose]"
+pip install -e .
 # or: pip install -r requirements.txt
 playwright install chromium
 python -m healing.architecture_scan

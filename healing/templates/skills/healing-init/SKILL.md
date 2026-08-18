@@ -13,9 +13,9 @@ Wire the installable `healing` package into the current Playwright Python POM pr
 ## Prerequisites
 
 ```bash
-pip install -e ".[mcp]"
+pip install -e .
 # or from another repo:
-# pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+# pip install "healing @ git+https://github.com/arunambadikv/self-healing-framework.git"
 playwright install chromium
 ```
 
@@ -36,15 +36,19 @@ healing-init --verify-mcp
    - `healer-artifacts/{failures,healing-queue,architecture,healing-reports,auth}/`
    - `.cursor/skills/` operator skills (copied from package templates)
    - `.cursor/mcp.json` Playwright MCP stub (if missing)
-   - `.env.example` (copy to `.env`; set `CURSOR_API_KEY` only for MCP propose)
+   - `.env.example` (copy to `.env`; set `HEALING_LLM_PROVIDER` + matching API key for MCP propose)
    - Doctor report (use `--no-check` to skip)
 
 3. Tell the user:
    - Full guide: `docs/CONSUMER_SETUP.md` in the healing repo (or README link)
-   - `cp .env.example .env` and set the key if they want automated propose
+   - `cp .env.example .env` and set provider + key if they want automated propose
+     (`cursor`/`openai`/`gemini`/`groq`; defaults `composer-2.5` / `gpt-4.1` /
+     `gemini-3.6-flash` / `openai/gpt-oss-120b`)
    - `healing-doctor` anytime to re-check
    - Capture/review/apply work without the API key
-   - Cursor Settings → MCP is only for interactive IDE use; CLI propose starts MCP via stdio
+   - `healing-init` refreshes bundled skills and `.env.example` from the package (even without `--force`)
+   - After `pip install -U` from git, the next pytest / healing-doctor does the same
+   - `--force` overwrites `healer-artifacts/healing.toml` and `.cursor/mcp.json`
 
 4. Ensure pytest loads the plugin (entry point via install, or):
 
@@ -55,7 +59,7 @@ addopts = -p healing.pytest_plugin
 
 ## Rules
 
-- Do not overwrite existing skills/config unless the user asks for `--force`.
+- Bundled Cursor skills and `.env.example` refresh from the package on init and after pip update (pytest / doctor). `--force` overwrites `healing.toml` and `.cursor/mcp.json`.
 - Do not edit consumer `pages/*.py` during init.
 - Prefer `healing-init` CLI over hand-copying files.
 - Skills install to `.cursor/skills/` (Cursor default); runtime config/artifacts live under `healer-artifacts/` so they do not collide with the Python package named `healing`.
