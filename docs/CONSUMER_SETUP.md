@@ -146,7 +146,8 @@ Installed with the package (`pip install healing` / `healing[propose]`):
 | `healing-scan` | `healing.architecture_scan` | Refresh architecture manifest |
 | `healing-propose` | `healing.pom_propose` | Stub patches from failures |
 | `healing-mcp-propose` | `healing.mcp_propose_runner` | Complete patches via LLM + Playwright MCP |
-| `healing-review` | `healing.healing_review` | List / heal / skip / defer |
+| `healing-review` | `healing.healing_review` | List / heal / skip / defer (auto-imports CI downloads) |
+| `healing-import` | `healing.artifact_import` | Merge `gh run download` dirs into `healer-artifacts/` |
 | `healing-gates` | `healing.ci_gates` | CI policy + queue gates |
 
 ---
@@ -162,6 +163,7 @@ Installed with the package (`pip install healing` / `healing[propose]`):
 | Auto chain | `HEALING_MCP_AUTO=1` in `.env`, then `pytest` | same as MCP propose |
 | CI propose-on-failure | see [CONSUMER_CI.md](CONSUMER_CI.md) | repo secrets + git install |
 | Human review / apply | `healing-review --interactive` | pip |
+| Import CI artifacts | `healing-import` (also auto on `healing-review`) | pip |
 | Interactive slash skills | Cursor `/healing-*` | skills + optional IDE MCP |
 
 ---
@@ -226,7 +228,8 @@ Artifacts:
 | No failure files after pytest | Confirm `import healing` and `healing-doctor` shows pytest plugin OK; reinstall package |
 | LLM API key required / propose failed | Set `HEALING_LLM_PROVIDER` and matching `CURSOR_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` in `.env` |
 | MCP / npx errors | Install Node 18+; run `healing-doctor --verify-mcp` |
-| Chromium missing | `playwright install chromium` |
+| Chromium missing | Set `PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers` in `.env`, then `playwright install chromium`. Cursor sandbox `/tmp/cursor-sandbox-cache` is ephemeral. |
+| CI download not in healer-artifacts | `gh run download` unpacks under the artifact name; run `healing-review` or `healing-import` to merge |
 | Skills missing in Cursor | Re-run `healing-init` (or rely on package templates) |
 | Import errors / wrong package | Ensure project root is not a local empty `healing/` directory |
 

@@ -18,7 +18,19 @@ Optional slow-mo (milliseconds):
 HEALING_DEMO_SLOW_MO=800 pytest tests/test_orangehrm_healing.py --run-healing-demo -v
 ```
 
-Unset `PLAYWRIGHT_BROWSERS_PATH` if Cursor sandbox pointed Playwright at a temp cache:
+Pin Playwright browsers to a workspace folder so Cursor's sandbox does not re-download Chromium every session. In `.env`:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers
+```
+
+Then once (or after a Playwright upgrade):
+
+```bash
+playwright install chromium
+```
+
+If an agent still points at `/tmp/cursor-sandbox-cache/...`, healing loads `.env` and prefers `.playwright-browsers/` over that ephemeral path. You can also unset a sandbox override in a normal terminal:
 
 ```bash
 unset PLAYWRIGHT_BROWSERS_PATH

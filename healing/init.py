@@ -34,6 +34,9 @@ ANTHROPIC_API_KEY=
 # Opt-in: after healable locator failures, auto-run scan → stub → MCP propose
 # (read from .env automatically — no need to export every time)
 # HEALING_MCP_AUTO=1
+
+# Persistent browser cache (recommended in Cursor — sandbox /tmp caches are ephemeral)
+PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers
 """
 
 SKILL_NAMES = BUNDLED_SKILLS
@@ -112,6 +115,24 @@ def _write_env_example(workspace: Path, *, force: bool = False) -> str | None:
     return str(dest.relative_to(workspace))
 
 
+def _ensure_playwright_browsers(workspace: Path) -> str:
+    dest = workspace / ".playwright-browsers"
+    dest.mkdir(parents=True, exist_ok=True)
+    gitignore = workspace / ".gitignore"
+    marker = ".playwright-browsers/"
+    if gitignore.is_file():
+        text = gitignore.read_text(encoding="utf-8")
+        if ".playwright-browsers" not in text:
+            gitignore.write_text(text.rstrip() + f"\n{marker}\n", encoding="utf-8")
+    env_path = workspace / ".env"
+    assignment = "PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers"
+    if env_path.is_file():
+        existing = env_path.read_text(encoding="utf-8")
+        if "PLAYWRIGHT_BROWSERS_PATH" not in existing:
+            env_path.write_text(existing.rstrip() + f"\n\n{assignment}\n", encoding="utf-8")
+    return str(dest.relative_to(workspace))
+
+
 def init_workspace(
     workspace: Path,
     *,
@@ -128,6 +149,7 @@ def init_workspace(
         "healing_toml": _write_healing_toml(workspace, force=force),
         "mcp": _write_mcp_stub(workspace, force=force),
         "env_example": _write_env_example(workspace, force=force),
+        "playwright_browsers": _ensure_playwright_browsers(workspace),
         "skills": _copy_skill_templates(workspace, force=force),
         "scan": None,
     }
@@ -189,6 +211,9 @@ def main() -> int:
     else:
         print("  skills already present (use --force to refresh)")
     print("  healer-artifacts/ directories ensured")
+    browsers = result.get("playwright_browsers")
+    if browsers:
+        print(f"  {browsers}/ ready — set PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers then playwright install chromium")
     print()
     print("Happy path:")
     print("  1. playwright install chromium")

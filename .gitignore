@@ -10,6 +10,7 @@ __pycache__/
 
 # Playwright / MCP runtime artifacts
 .playwright-mcp/
+.playwright-browsers/
 test-results/
 playwright-report/
 playwright/.cache/

@@ -209,7 +209,15 @@ def main() -> int:
     from healing.paths import configure_workspace
 
     workspace = configure_workspace(args.workspace.resolve())
+    from healing.doctor import load_dotenv_files
+
+    load_dotenv_files(workspace)
     ensure_queue_dirs()
+    from healing.artifact_import import import_ci_artifacts
+
+    imported = import_ci_artifacts(workspace)
+    if imported.imported:
+        print(imported.summary_line())
 
     no_action = not any(
         [

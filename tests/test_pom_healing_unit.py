@@ -875,6 +875,9 @@ def test_init_workspace_writes_healer_layout_and_skills(tmp_path: Path, monkeypa
     assert (tmp_path / ".env.example").exists()
     assert "CURSOR_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert "HEALING_LLM_PROVIDER" in (tmp_path / ".env.example").read_text(encoding="utf-8")
+    assert (tmp_path / ".playwright-browsers").is_dir()
+    env_example = (tmp_path / ".env.example").read_text(encoding="utf-8")
+    assert "PLAYWRIGHT_BROWSERS_PATH" in env_example
     assert FAILURES_DIR.resolve() == (tmp_path / "healer-artifacts" / "failures").resolve()
     assert (tmp_path / ".cursor" / "skills" / "healing-init" / "SKILL.md").exists()
     assert (tmp_path / ".cursor" / "mcp.json").exists()
@@ -1564,4 +1567,210 @@ def test_ci_workflow_mentions_multi_provider_secrets():
     e2e = (root / ".github/workflows/healing-pipeline-e2e.yml").read_text(encoding="utf-8")
     assert "HEALING_LLM_PROVIDER" in e2e
     assert "steps.llm.outputs.has_key" in e2e
+    assert "healing-review --interactive" in e2e
+
+
+def test_normalize_validation_command_rewrites_ci_python(tmp_path: Path):
+    from healing.pom_apply import normalize_validation_command, parse_validation_command
+    import sys
+
+    cmd = (
+        "/opt/hostedtoolcache/Python/3.12.13/x64/bin/python -m pytest "
+        "/home/runner/work/self-healing-framework/self-healing-framework/tests/test_demo.py -q "
+        "--run-healing-demo"
+    )
+    out = normalize_validation_command(
+        cmd,
+        tmp_path,
+        nodeid="tests/test_demo.py::test_login[chromium]",
+    )
+    argv = parse_validation_command(out)
+    assert argv[0] == sys.executable
+    assert argv[1:4] == ["-m", "pytest", "tests/test_demo.py::test_login[chromium]"]
+    assert "-q" in argv
+    assert "--run-healing-demo" in argv
+
+
+def test_choose_merged_entry_keeps_local_applied():
+    from healing.healing_queue import choose_merged_entry
+
+    local = {"patch_id": "P-1", "status": "applied", "processed_at": "2026-01-01T00:00:00+00:00"}
+    incoming = {"patch_id": "P-1", "status": "patch_ready", "processed_at": "2026-08-18T00:00:00+00:00"}
+    assert choose_merged_entry(local, incoming)["status"] == "applied"
+
+
+def test_artifact_import_merges_download_and_rewrites_paths(tmp_path: Path, monkeypatch):
+    from healing.artifact_import import import_ci_artifacts
+    from healing.healing_queue import _load_index
+    from healing.paths import reset_workspace
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    ensure_queue_dirs()
+
+    src = tmp_path / "healing-pipeline-e2e"
+    (src / "failures").mkdir(parents=True)
+    (src / "healing-queue" / "patches").mkdir(parents=True)
+    failure_id = "F-test_demo-chromium-20260818-000001"
+    patch_id = "P-test_demo-chromium-20260818-000002"
+    runner = "/home/runner/work/self-healing-framework/self-healing-framework"
+    failure = {
+        "failure_id": failure_id,
+        "test": {
+            "file": f"{runner}/tests/test_demo.py",
+            "nodeid": "tests/test_demo.py::test_x[chromium]",
+            "name": "test_x[chromium]",
+        },
+        "error": {"type": "TimeoutError", "message": "boom"},
+    }
+    (src / "failures" / f"{failure_id}.json").write_text(json.dumps(failure, indent=2), encoding="utf-8")
+    (src / "failures" / f"{failure_id}.md").write_text(
+        f"Screenshot: {runner}/healer-artifacts/failures/shot.png\n",
+        encoding="utf-8",
+    )
+    patch = {
+        "proposal": {
+            "patch_id": patch_id,
+            "failure_id": failure_id,
+            "validation_command": (
+                "/opt/hostedtoolcache/Python/3.12.13/x64/bin/python -m pytest "
+                f"{runner}/tests/test_demo.py -q"
+            ),
+            "links": {
+                "failure_json": f"{runner}/healer-artifacts/failures/{failure_id}.json",
+            },
+            "architecture_updates": [
+                {"file": "pages/demo_page.py", "symbol": "btn", "before": "old", "after": "new"}
+            ],
+        }
+    }
+    (src / "healing-queue" / "patches" / f"{patch_id}.json").write_text(
+        json.dumps(patch, indent=2), encoding="utf-8"
+    )
+    (src / "healing-queue" / "index.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entries": [
+                    {
+                        "failure_id": failure_id,
+                        "patch_id": patch_id,
+                        "status": "patch_ready",
+                        "failure_json": f"{runner}/healer-artifacts/failures/{failure_id}.json",
+                        "failure_md": f"{runner}/healer-artifacts/failures/{failure_id}.md",
+                        "patch_json": f"{runner}/healer-artifacts/healing-queue/patches/{patch_id}.json",
+                        "patch_md": None,
+                        "created_at": "2026-08-18T08:00:00+00:00",
+                        "processed_at": "2026-08-18T08:00:01+00:00",
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = import_ci_artifacts(tmp_path)
+    assert result.imported
+    assert "healing-pipeline-e2e" in result.sources
+    dest_failure = json.loads(
+        (tmp_path / "healer-artifacts" / "failures" / f"{failure_id}.json").read_text(encoding="utf-8")
+    )
+    assert dest_failure["test"]["file"] == "tests/test_demo.py"
+    dest_patch = json.loads(
+        (tmp_path / "healer-artifacts" / "healing-queue" / "patches" / f"{patch_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    cmd = dest_patch["proposal"]["validation_command"]
+    assert "hostedtoolcache" not in cmd
+    assert "tests/test_demo.py" in cmd
+    assert str(tmp_path) in dest_patch["proposal"]["links"]["failure_json"]
+    index = _load_index()
+    entry = next(e for e in index["entries"] if e.get("patch_id") == patch_id)
+    assert entry["status"] == "patch_ready"
+    assert str(tmp_path) in entry["failure_json"]
+    reset_workspace()
+
+
+def test_artifact_import_keeps_local_applied_over_incoming_ready(tmp_path: Path, monkeypatch):
+    from healing.artifact_import import import_ci_artifacts
+    from healing.healing_queue import _load_index, _save_index
+    from healing.paths import reset_workspace
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    ensure_queue_dirs()
+    patch_id = "P-keep-applied"
+    failure_id = "F-keep-applied"
+    _save_index(
+        {
+            "version": 1,
+            "entries": [
+                {
+                    "failure_id": failure_id,
+                    "patch_id": patch_id,
+                    "status": "applied",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "processed_at": "2026-01-02T00:00:00+00:00",
+                }
+            ],
+        }
+    )
+    src = tmp_path / "healing-artifacts"
+    nested = src / "healer-artifacts"
+    (nested / "failures").mkdir(parents=True)
+    (nested / "healing-queue" / "patches").mkdir(parents=True)
+    (nested / "failures" / f"{failure_id}.json").write_text("{}", encoding="utf-8")
+    (nested / "healing-queue" / "index.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entries": [
+                    {
+                        "failure_id": failure_id,
+                        "patch_id": patch_id,
+                        "status": "patch_ready",
+                        "created_at": "2026-08-18T00:00:00+00:00",
+                        "processed_at": "2026-08-18T00:00:01+00:00",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = import_ci_artifacts(tmp_path)
+    assert result.sources == ["healing-artifacts"]
+    index = _load_index()
+    entry = next(e for e in index["entries"] if e.get("patch_id") == patch_id)
+    assert entry["status"] == "applied"
+    reset_workspace()
+
+
+def test_doctor_warns_on_sandbox_browsers_path(monkeypatch):
+    from healing.doctor import _check_playwright_browsers
+
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "/tmp/cursor-sandbox-cache/abc/playwright")
+    result = _check_playwright_browsers()
+    assert result.status == "warn"
+    assert "ephemeral" in result.detail
+
+
+def test_load_dotenv_overrides_sandbox_browsers_path(tmp_path: Path, monkeypatch):
+    import os
+
+    from healing.doctor import load_dotenv_files
+
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "/tmp/cursor-sandbox-cache/abc/playwright")
+    (tmp_path / ".env").write_text("PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers\n", encoding="utf-8")
+    (tmp_path / ".playwright-browsers").mkdir()
+    load_dotenv_files(tmp_path)
+    assert os.environ["PLAYWRIGHT_BROWSERS_PATH"] == str(tmp_path / ".playwright-browsers")
+    monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
+
+
+def test_healing_import_console_script_is_packaged():
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'healing-import = "healing.artifact_import:main"' in text
 
