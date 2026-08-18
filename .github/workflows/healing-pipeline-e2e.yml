@@ -158,5 +158,5 @@ jobs:
             echo "- demo exit: \`${{ steps.demo.outputs.exit_code }}\`"
             echo ""
             echo "Human review/apply is **not** run in CI."
-            echo "Operator: \`gh run download\` then \`python -m healing.healing_review --interactive\`"
+            echo "Operator: \`gh run download\` then \`healing-review --interactive\` (auto-merges into healer-artifacts/)."
           } >> "$GITHUB_STEP_SUMMARY"

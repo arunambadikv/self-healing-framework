@@ -18,10 +18,14 @@ Human-in-the-loop is **only at the decision**. After the user picks Heal / Skip 
 
 ### Terminal (recommended)
 
+`healing-review` auto-merges leftover `gh run download` folders (e.g. `healing-pipeline-e2e/`) into `healer-artifacts/` on startup. After CI:
+
 ```bash
+gh run download
 python -m healing.healing_review --interactive
 # or simply (TTY default):
 python -m healing.healing_review
+# or: healing-import && healing-review --list
 ```
 
 Guided menu per patch: **Heal** | **Skip** | **Defer** | **Show failure** | **Dry run** | **Quit**
@@ -34,7 +38,7 @@ python -m healing.healing_review --list
 
 ### Cursor chat (agent)
 
-1. Run `python -m healing.healing_review --promote-all` if any patches may still be `awaiting_agent`.
+1. Run `python -m healing.healing_review --promote-all` if any patches may still be `awaiting_agent`. (Review already auto-imported CI downloads; `healing-import` is optional if you downloaded artifacts without opening review yet.)
 2. Run `python -m healing.healing_review --list` (read-only table of `patch_ready` patches).
 3. For **each** pending patch:
    - Run `python -m healing.healing_review --show P-<id>` for the review card.

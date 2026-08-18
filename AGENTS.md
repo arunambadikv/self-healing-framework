@@ -21,7 +21,8 @@
 | Architecture scan | `/architecture-discovery` → `python -m healing.architecture_scan` (also auto on `healing-init` / pytest after package update) |
 | Propose patches | `/healing-propose` → `python -m healing.pom_propose --process-all` |
 | MCP propose (SDK) | `python -m healing.mcp_propose_runner --process-all` |
-| Human review | `/healing-review` → `python -m healing.healing_review --list` |
+| Human review | `/healing-review` → `python -m healing.healing_review --list` (auto-imports CI downloads) |
+| Import CI artifacts | `healing-import` (`python -m healing.artifact_import`) |
 | Locator repair (MCP + proposals) | `/playwright-locator-repair` |
 | Human review + apply | `/healing-review` |
 | Push to dev | `/push-to-dev` |

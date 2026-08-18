@@ -1,6 +1,6 @@
 # Project Status
 
-> **Last updated:** 2026-08-06  
+> **Last updated:** 2026-08-18  
 > **Branch:** `dev`  
 > **Repo:** [arunambadikv/self-healing-framework](https://github.com/arunambadikv/self-healing-framework)
 
@@ -10,7 +10,7 @@ Playwright Python POM healing framework, now **installable** (`pip install -e ".
 
 **Hardening (2026-08):** apply validation allowlist + rollback; patch structure/`before` source checks; packaged `ci_gates_config.yaml` for pip consumers; pinned `@playwright/mcp@0.0.79`; queue `fcntl` lock + atomic index writes; `--json` / `--list-deferred` CLIs; doctor pages/.env checks.
 
-**Multi-LLM (2026-08-12):** `HEALING_LLM_PROVIDER=cursor|openai|anthropic` with matching API keys; CI propose-on-failure and [CONSUMER_CI.md](CONSUMER_CI.md) for git-installed consumers.
+**CI import (2026-08-18):** `healing-import` / auto-merge on `healing-review` copies `gh run download` dirs into `healer-artifacts/` and rewrites runner paths. Playwright browsers pin to `.playwright-browsers/` so Cursor sandbox caches are not used.
 **Target app:** configurable via `HEALING_BASE_URL` (default: OrangeHRM demo login). Opt-in healing demos in `tests/test_orangehrm_healing.py` and `tests/test_saucedemo_healing.py`.
 
 **Current focus:** `dev` has the MCP propose runner and failure-gated `HEALING_MCP_AUTO` chain; merge to `main` via PR when CI is green.
@@ -31,6 +31,7 @@ Playwright Python POM healing framework, now **installable** (`pip install -e ".
 | MCP propose (multi-LLM + Playwright MCP) | Done | `healing/mcp_propose_runner.py` (`HEALING_LLM_PROVIDER` + key) |
 | Post-test auto chain (opt-in) | Done | `healing/post_test.py`, `healing/session_state.py` |
 | Human review + apply | Done | `healing/healing_review.py` (`--yes`, screenshots, deferred) |
+| CI artifact import | Done | `healing/artifact_import.py` (`healing-import`; auto on review) |
 | Installable package + init | Done | `pyproject.toml`, `healing/init.py`, `/healing-init` |
 | Consumer setup guide + doctor | Done | [docs/CONSUMER_SETUP.md](CONSUMER_SETUP.md), `healing-doctor` |
 | QA Chapters Confluence pack | Done | [docs/CONFLUENCE_QA_CHAPTERS.md](CONFLUENCE_QA_CHAPTERS.md) + [docs/attachments/](attachments/) |

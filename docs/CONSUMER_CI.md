@@ -81,6 +81,12 @@ jobs:
         if: always()
 ```
 
-Human review/apply stays local: download artifacts, then `healing-review --interactive`.
+Human review/apply stays local:
+
+```bash
+gh run download
+healing-review --interactive    # auto-merges into healer-artifacts/
+# or: healing-import && healing-review --list
+```
 
 See also [CONSUMER_SETUP.md](CONSUMER_SETUP.md).

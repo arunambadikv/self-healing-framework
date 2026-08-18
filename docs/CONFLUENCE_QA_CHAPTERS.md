@@ -311,7 +311,7 @@ Only **broken locators** are treated as healable. Session/login problems, networ
 | No failure report after a red test | Run `healing-doctor`; reinstall; check you did not create a shadowing `healing/` folder |
 | Message about `CURSOR_API_KEY` | Copy `.env.example` to `.env` and set the key |
 | Browser-assistant / `npx` errors | Install Node 18+; run `healing-doctor --verify-mcp` |
-| Chromium missing | `playwright install chromium` |
+| Chromium missing | Set `PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers` in `.env`, then `playwright install chromium` |
 | Cursor playbooks missing | Run `healing-init` again (add `--force` if needed) |
 | Suggestion points at the wrong control | Refresh the catalogue: `healing-scan` or `/architecture-discovery` |
 

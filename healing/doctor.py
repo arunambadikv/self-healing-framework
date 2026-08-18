@@ -21,19 +21,55 @@ class CheckResult:
     detail: str
 
 
+PLAYWRIGHT_BROWSERS_DIR = ".playwright-browsers"
+SANDBOX_BROWSERS_MARKERS = ("cursor-sandbox-cache",)
+
+
 def load_dotenv_files(workspace: Path) -> list[Path]:
     """Load workspace .env into os.environ (does not override existing vars)."""
     loaded: list[Path] = []
     try:
         from dotenv import load_dotenv
     except ImportError:
+        apply_persistent_browsers_path(workspace)
         return loaded
     for name in (".env", ".env.local"):
         path = workspace / name
         if path.is_file():
             load_dotenv(path, override=False)
             loaded.append(path)
+    apply_persistent_browsers_path(workspace)
     return loaded
+
+
+def _dotenv_value(workspace: Path, key: str) -> str:
+    for name in (".env", ".env.local"):
+        path = workspace / name
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            k, _, value = stripped.partition("=")
+            if k.strip() == key:
+                return value.strip().strip("'\"")
+    return ""
+
+
+def apply_persistent_browsers_path(workspace: Path) -> str | None:
+    """Prefer a project-local Playwright cache over Cursor's ephemeral sandbox path."""
+    desired = _dotenv_value(workspace, "PLAYWRIGHT_BROWSERS_PATH")
+    if not desired:
+        return None
+    current = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
+    if current and current != "0" and not any(m in current for m in SANDBOX_BROWSERS_MARKERS):
+        return current
+    path = Path(desired)
+    if not path.is_absolute():
+        path = workspace / path
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(path)
+    return str(path)
 
 
 def _check_package_import() -> CheckResult:
@@ -99,8 +135,10 @@ def _playwright_browser_roots() -> list[Path]:
     return out
 
 
-def find_chromium_executable() -> Path | None:
-    """Locate an installed Chromium binary without starting a Playwright driver."""
+def find_chromium_in_root(root: Path) -> Path | None:
+    """Locate Chromium under a single Playwright browsers root."""
+    if not root.is_dir():
+        return None
     patterns = (
         "chromium-*/chrome-linux*/chrome",
         "chromium_headless_shell-*/chrome-linux*/headless_shell",
@@ -110,14 +148,23 @@ def find_chromium_executable() -> Path | None:
         "chromium-*/chrome-win*/chrome",
     )
     candidates: list[Path] = []
-    for root in _playwright_browser_roots():
-        if not root.is_dir():
-            continue
-        for pattern in patterns:
-            candidates.extend(p for p in root.glob(pattern) if p.is_file())
+    for pattern in patterns:
+        candidates.extend(p for p in root.glob(pattern) if p.is_file())
     if not candidates:
         return None
-    # Prefer newest revision directory name (chromium-NNNN)
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+def find_chromium_executable() -> Path | None:
+    """Locate an installed Chromium binary without starting a Playwright driver."""
+    candidates: list[Path] = []
+    for root in _playwright_browser_roots():
+        found = find_chromium_in_root(root)
+        if found is not None:
+            candidates.append(found)
+    if not candidates:
+        return None
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0]
 
@@ -128,8 +175,40 @@ def _check_playwright_browsers() -> CheckResult:
     except ImportError:
         return CheckResult("playwright", "error", "playwright not installed")
 
-    # Avoid sync_playwright() here — starting the driver just to read executable_path
-    # often prints "Task was destroyed but it is pending" / TargetClosedError on exit.
+    env = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
+    if env and any(m in env for m in SANDBOX_BROWSERS_MARKERS):
+        return CheckResult(
+            "chromium",
+            "warn",
+            "Cursor sandbox cache is ephemeral; set PLAYWRIGHT_BROWSERS_PATH="
+            f"{PLAYWRIGHT_BROWSERS_DIR} in .env",
+        )
+
+    if env and env != "0":
+        env_root = Path(env)
+        found = find_chromium_in_root(env_root)
+        if found is not None:
+            return CheckResult("chromium", "ok", f"executable at {found} (root {env_root})")
+        home_found = None
+        for root in _playwright_browser_roots()[1:]:
+            home_found = find_chromium_in_root(root)
+            if home_found is not None:
+                break
+        if home_found is not None:
+            return CheckResult(
+                "chromium",
+                "warn",
+                f"PLAYWRIGHT_BROWSERS_PATH={env} has no Chromium, but {home_found} exists — "
+                f"unset the env var or set PLAYWRIGHT_BROWSERS_PATH={PLAYWRIGHT_BROWSERS_DIR} "
+                "and run: playwright install chromium",
+            )
+        return CheckResult(
+            "chromium",
+            "warn",
+            f"chromium executable missing under PLAYWRIGHT_BROWSERS_PATH={env} — "
+            "run: playwright install chromium",
+        )
+
     path = find_chromium_executable()
     if path is not None:
         return CheckResult("chromium", "ok", f"executable at {path}")
@@ -138,6 +217,28 @@ def _check_playwright_browsers() -> CheckResult:
         "warn",
         "chromium executable missing — run: playwright install chromium",
     )
+
+
+def _check_ci_download_dirs(workspace: Path) -> CheckResult:
+    from healing.artifact_import import detect_download_roots, download_dir_is_newer
+
+    roots = detect_download_roots(workspace)
+    newer = [r.name for r in roots if download_dir_is_newer(workspace, r)]
+    if newer:
+        names = ", ".join(f"{n}/" for n in newer)
+        return CheckResult(
+            "CI downloads",
+            "warn",
+            f"{names} newer than local queue — run healing-import or healing-review to merge",
+        )
+    if roots:
+        names = ", ".join(f"{r.name}/" for r in roots)
+        return CheckResult(
+            "CI downloads",
+            "ok",
+            f"leftover {names} (already imported or not newer); healing-import --cleanup to remove",
+        )
+    return CheckResult("CI downloads", "ok", "no leftover gh run download directories")
 
 
 def _check_npx() -> CheckResult:
@@ -378,6 +479,7 @@ def run_doctor(
         lambda: _check_config(workspace),
         lambda: _check_pages_dir(workspace),
         lambda: _check_artifact_dirs(workspace),
+        lambda: _check_ci_download_dirs(workspace),
         lambda: _check_env_not_tracked(workspace),
         lambda: _check_skills(workspace),
     ]

@@ -31,6 +31,8 @@ STATUSES = frozenset(
     }
 )
 
+TERMINAL_STATUSES = frozenset({"applied", "skipped", "deferred"})
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows
@@ -320,6 +322,68 @@ def move_patch_file(patch_id: str, dest_dir: Path) -> None:
             dest = dest_dir / src.name
             dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
             src.unlink()
+
+
+def _entry_key(entry: dict[str, Any]) -> str:
+    return str(entry.get("patch_id") or entry.get("failure_id") or "")
+
+
+def _entry_timestamp(entry: dict[str, Any]) -> str:
+    return str(entry.get("processed_at") or entry.get("created_at") or "")
+
+
+def choose_merged_entry(local: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    """Prefer local terminal statuses over incoming patch_ready; otherwise newer stamp."""
+    local_status = str(local.get("status") or "")
+    incoming_status = str(incoming.get("status") or "")
+    if local_status in TERMINAL_STATUSES and incoming_status == "patch_ready":
+        return local
+    if incoming_status in TERMINAL_STATUSES and local_status not in TERMINAL_STATUSES:
+        return incoming
+    if _entry_timestamp(incoming) > _entry_timestamp(local):
+        return incoming
+    return local
+
+
+def merge_index_entries(incoming_entries: list[dict[str, Any]]) -> int:
+    """Merge imported queue entries into the local index. Returns upsert count."""
+
+    def _mutate(index: dict[str, Any]) -> int:
+        by_key: dict[str, dict[str, Any]] = {}
+        order: list[tuple[str, Any]] = []
+        for entry in index.get("entries", []):
+            key = _entry_key(entry)
+            if not key:
+                order.append(("raw", entry))
+                continue
+            by_key[key] = entry
+            order.append(("key", key))
+        upserts = 0
+        for incoming in incoming_entries:
+            key = _entry_key(incoming)
+            if not key:
+                continue
+            if key in by_key:
+                chosen = choose_merged_entry(by_key[key], incoming)
+                if chosen is incoming:
+                    by_key[key] = incoming
+                    upserts += 1
+            else:
+                by_key[key] = incoming
+                order.append(("key", key))
+                upserts += 1
+        new_entries: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for kind, value in order:
+            if kind == "raw":
+                new_entries.append(value)
+            elif value not in seen:
+                new_entries.append(by_key[value])
+                seen.add(value)
+        index["entries"] = new_entries
+        return upserts
+
+    return int(_mutate_index(_mutate))
 
 
 def get_index_summary() -> dict[str, int]:
