@@ -1920,8 +1920,17 @@ def test_artifact_import_merges_download_and_rewrites_paths(tmp_path: Path, monk
         )
     )
     cmd = dest_patch["proposal"]["validation_command"]
-    assert "hostedtoolcache" not in cmd
-    assert "tests/test_demo.py" in cmd
+    from healing.pom_apply import parse_validation_command
+    import sys
+
+    argv = parse_validation_command(cmd)
+    assert argv[0] == sys.executable
+    assert argv[1:4] == ["-m", "pytest", "tests/test_demo.py::test_x[chromium]"]
+    assert "/home/runner/work/" not in cmd
+    # On GHA runners sys.executable itself lives under hostedtoolcache; only
+    # assert the CI interpreter path is gone when we are not that runner.
+    if "hostedtoolcache" not in sys.executable:
+        assert "hostedtoolcache" not in cmd
     assert str(tmp_path) in dest_patch["proposal"]["links"]["failure_json"]
     index = _load_index()
     entry = next(e for e in index["entries"] if e.get("patch_id") == patch_id)
