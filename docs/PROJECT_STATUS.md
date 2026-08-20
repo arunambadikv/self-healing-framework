@@ -12,7 +12,7 @@ Playwright Python POM healing framework, now **installable** (`pip install -e .`
 
 **CI import (2026-08-18):** `healing-import` / auto-merge on `healing-review` copies `gh run download` dirs into `healer-artifacts/` and rewrites runner paths. Playwright browsers pin to `.playwright-browsers/` so Cursor sandbox caches are not used.
 
-**Providers (2026-08-19):** `HEALING_LLM_PROVIDER=cursor|openai|gemini|groq`. Defaults: `composer-2.5`, `gpt-4.1`, `gemini-3.6-flash`, `openai/gpt-oss-120b`. Cursor SDK, OpenAI, and MCP ship in the core package — consumers only set provider + key in `.env`.
+**Providers (2026-08-20):** `HEALING_LLM_PROVIDER=cursor|openai|gemini|groq|litellm`. Defaults: `composer-2.5`, `gpt-4.1`, `gemini-3.6-flash`, `openai/gpt-oss-120b`, `gpt-4o-mini`. Cursor SDK, OpenAI, and MCP ship in the core package — consumers only set provider + key in `.env`. `litellm` uses Keyvalue proxy (`https://llm.keyvalue.systems` + `LITE_LLM_KEY`).
 
 **Queue archive (2026-08-19):** heal/skip moves `P-*.json`, `.md`, and `-agent-task.md` out of pending `healing-queue/patches/` into `applied/` or `skipped/`. Review/import sweeps leftovers (including CI re-imports).
 **Target app:** configurable via `HEALING_BASE_URL` (default: OrangeHRM demo login). Opt-in healing demos in `tests/test_orangehrm_healing.py` and `tests/test_saucedemo_healing.py`.
@@ -198,6 +198,7 @@ pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run
 
 | Date | Change |
 |------|--------|
+| 2026-08-20 | Added `litellm` provider (`LITE_LLM_KEY` → `https://llm.keyvalue.systems`, default `gpt-4o-mini`); OpenAI provider unchanged |
 | 2026-08-19 | v0.1.2: Gemini/Groq defaults, OpenAI-compat propose, archive applied/skipped out of pending `patches/`; pip git updates refresh bundled skills + `.env.example` on next pytest/doctor |
 | 2026-08-18 | Propose providers: `cursor`/`openai`/`gemini`/`groq` (Anthropic removed); SDKs bundled in core package |
 | 2026-08-06 | High/medium hardening: apply security, patch validate, MCP pin, package config, queue lock, DX CLIs |

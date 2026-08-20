@@ -320,7 +320,7 @@ def _check_provider_sdk(workspace: Path) -> CheckResult:
 
     if cfg.provider == "cursor":
         return _check_cursor_sdk()
-    if cfg.provider in ("openai", "gemini", "groq"):
+    if cfg.provider in ("openai", "gemini", "groq", "litellm"):
         try:
             import openai  # noqa: F401
             import mcp  # noqa: F401

@@ -25,6 +25,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      LITE_LLM_KEY: ${{ secrets.LITE_LLM_KEY }}
       HEALING_LLM_MODEL: ${{ vars.HEALING_LLM_MODEL || '' }}
     steps:
       - uses: actions/checkout@v4

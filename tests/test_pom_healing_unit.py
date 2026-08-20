@@ -876,12 +876,15 @@ def test_init_workspace_writes_healer_layout_and_skills(tmp_path: Path, monkeypa
     assert "CURSOR_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert "GEMINI_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert "GROQ_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
+    assert "LITE_LLM_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert "ANTHROPIC_API_KEY" not in (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert (tmp_path / ".playwright-browsers").is_dir()
     env_example = (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert "PLAYWRIGHT_BROWSERS_PATH" in env_example
     assert "gemini-3.6-flash" in env_example
     assert "openai/gpt-oss-120b" in env_example
+    assert "gpt-4o-mini" in env_example
+    assert "litellm" in env_example
     assert FAILURES_DIR.resolve() == (tmp_path / "healer-artifacts" / "failures").resolve()
     assert (tmp_path / ".cursor" / "skills" / "healing-init" / "SKILL.md").exists()
     assert (tmp_path / ".cursor" / "mcp.json").exists()
@@ -1030,6 +1033,19 @@ def test_patch_validate_rejects_todo_and_stale_before(tmp_path: Path, monkeypatc
         }
     )
     assert any("TODO" in e for e in todo_errs)
+    noop_errs = validate_proposal(
+        {
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "btn",
+                    "before": "self.page.get_by_role('button', name='live')",
+                    "after": "self.page.get_by_role('button', name='live')",
+                }
+            ]
+        }
+    )
+    assert any("must differ from before" in e for e in noop_errs)
     ok = validate_proposal(
         {
             "architecture_updates": [
@@ -1441,6 +1457,7 @@ def test_resolve_llm_config_defaults_and_keys(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("LITE_LLM_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("HEALING_LLM_MODEL", raising=False)
     monkeypatch.delenv("HEALING_MCP_MODEL", raising=False)
@@ -1457,6 +1474,7 @@ def test_resolve_llm_config_defaults_and_keys(monkeypatch):
     assert cfg.api_key == "sk-test"
     assert cfg.model == "gpt-4.1"
     assert cfg.key_env == "OPENAI_API_KEY"
+    assert cfg.openai_base_url is None
 
     monkeypatch.setenv("HEALING_LLM_PROVIDER", "gemini")
     monkeypatch.setenv("GEMINI_API_KEY", "gem-test")
@@ -1478,6 +1496,19 @@ def test_resolve_llm_config_defaults_and_keys(monkeypatch):
     assert cfg.provider == "groq"
     assert cfg.model == "openai/gpt-oss-120b"
     assert cfg.openai_base_url == "https://api.groq.com/openai/v1"
+
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "litellm")
+    monkeypatch.setenv("LITE_LLM_KEY", "lite-test")
+    cfg = resolve_llm_config()
+    assert cfg.provider == "litellm"
+    assert cfg.api_key == "lite-test"
+    assert cfg.model == "gpt-4o-mini"
+    assert cfg.key_env == "LITE_LLM_KEY"
+    assert cfg.openai_base_url == "https://llm.keyvalue.systems"
+
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "lite_llm")
+    cfg = resolve_llm_config()
+    assert cfg.provider == "litellm"
 
     monkeypatch.setenv("HEALING_LLM_PROVIDER", "nope")
     try:
@@ -1683,8 +1714,16 @@ def test_gemini_and_groq_use_openai_compat_provider():
         key_env="GROQ_API_KEY",
         openai_base_url="https://api.groq.com/openai/v1",
     )
+    litellm = LlmConfig(
+        provider="litellm",
+        api_key="lite",
+        model="gpt-4o-mini",
+        key_env="LITE_LLM_KEY",
+        openai_base_url="https://llm.keyvalue.systems",
+    )
     assert isinstance(get_provider(gemini), OpenAICompatProposeProvider)
     assert isinstance(get_provider(groq), OpenAICompatProposeProvider)
+    assert isinstance(get_provider(litellm), OpenAICompatProposeProvider)
 
 
 def test_ci_workflow_mentions_multi_provider_secrets():
@@ -1694,9 +1733,11 @@ def test_ci_workflow_mentions_multi_provider_secrets():
     assert "OPENAI_API_KEY" in ci
     assert "GEMINI_API_KEY" in ci
     assert "GROQ_API_KEY" in ci
+    assert "LITE_LLM_KEY" in ci
     assert "ANTHROPIC_API_KEY" not in ci
     e2e = (root / ".github/workflows/healing-pipeline-e2e.yml").read_text(encoding="utf-8")
     assert "HEALING_LLM_PROVIDER" in e2e
+    assert "LITE_LLM_KEY" in e2e
     assert "steps.llm.outputs.has_key" in e2e
     assert "healing-review --interactive" in e2e
 

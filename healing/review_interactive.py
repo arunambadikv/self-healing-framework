@@ -102,7 +102,7 @@ def run_interactive_review(
             )
             out.write("\n")
             out.write(format_menu(high_risk=high_risk and not auto_confirm))
-            choice = _read_line("Your choice: ", read).lower()
+            choice = _read_line("Your choice [1-5 / q]: ", read).lower()
 
             if choice in ("1", "h", "heal"):
                 if high_risk and not auto_confirm and not _confirm_high_risk(read):

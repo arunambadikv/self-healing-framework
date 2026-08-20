@@ -91,8 +91,8 @@ python -m healing.pom_propose --process-all
 python -m healing.mcp_propose_runner --list
 python -m healing.mcp_propose_runner --process-all
 # → completes P-*.json via LLM provider + Playwright MCP (status: patch_ready)
-#    cursor: Cursor SDK; openai/gemini/groq: OpenAI-compatible Chat Completions
-#    defaults: composer-2.5 / gpt-4.1 / gemini-3.6-flash / openai/gpt-oss-120b
+#    cursor: Cursor SDK; openai/gemini/groq/litellm: OpenAI-compatible Chat Completions
+#    defaults: composer-2.5 / gpt-4.1 / gemini-3.6-flash / openai/gpt-oss-120b / gpt-4o-mini
 ```
 
 **Single patch:**
@@ -105,7 +105,7 @@ python -m healing.mcp_propose_runner --patch-id P-<id>
 
 ```bash
 export HEALING_MCP_AUTO=1
-# HEALING_LLM_PROVIDER=cursor|openai|gemini|groq + matching key in .env
+# HEALING_LLM_PROVIDER=cursor|openai|gemini|groq|litellm + matching key in .env
 pytest tests/ -v
 # on healable locator failure at session end → architecture_scan (if stale)
 # → pom_propose (always new stub for this session's failures)

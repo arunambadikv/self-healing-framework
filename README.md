@@ -36,7 +36,7 @@ pytest tests/ -v
 | Capability | Needs |
 |------------|--------|
 | Capture, scan, stub propose, review, apply | Nothing beyond pip + chromium |
-| Automated MCP propose (`mcp_propose_runner` / `HEALING_MCP_AUTO`) | `HEALING_LLM_PROVIDER` + matching key in `.env`, Node/`npx` (`cursor`/`openai`/`gemini`/`groq`) |
+| Automated MCP propose (`mcp_propose_runner` / `HEALING_MCP_AUTO`) | `HEALING_LLM_PROVIDER` + matching key in `.env`, Node/`npx` (`cursor`/`openai`/`gemini`/`groq`/`litellm`) |
 | CI propose-on-failure | Same secrets as repo variables — see [docs/CONSUMER_CI.md](docs/CONSUMER_CI.md) |
 | Interactive Cursor slash repair | Enable Playwright MCP from `.cursor/mcp.json` in Cursor Settings (IDE only — CLI propose starts MCP via stdio itself) |
 

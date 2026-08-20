@@ -30,6 +30,7 @@ CURSOR_API_KEY=
 OPENAI_API_KEY=
 GEMINI_API_KEY=
 GROQ_API_KEY=
+LITE_LLM_KEY=
 # HEALING_LLM_MODEL=
 
 # Opt-in: after healable locator failures, auto-run scan → stub → MCP propose

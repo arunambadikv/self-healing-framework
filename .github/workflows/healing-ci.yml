@@ -83,6 +83,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          LITE_LLM_KEY: ${{ secrets.LITE_LLM_KEY }}
         run: |
           python - <<'PY'
           import os, sys
@@ -106,6 +107,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          LITE_LLM_KEY: ${{ secrets.LITE_LLM_KEY }}
           HEALING_LLM_MODEL: ${{ vars.HEALING_LLM_MODEL || '' }}
         run: python -m healing.mcp_propose_runner --process-all
 

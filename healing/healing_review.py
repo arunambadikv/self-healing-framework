@@ -64,12 +64,13 @@ def write_skip_rca(patch_id: str, payload: dict[str, Any], reason: str) -> Path:
 def decision_heal(patch_id: str, *, workspace: Path, dry_run: bool = False) -> int:
     payload = load_patch(patch_id, QUEUE_PATCHES)
     proposal = payload.get("proposal") or payload
-    updates = proposal.get("architecture_updates") or []
-    if proposal.get("proposal_status") == "awaiting_agent" or any(
-        "TODO" in str(u.get("after", "")) for u in updates
-    ):
+    from healing.patch_validate import validate_proposal
+
+    errors = validate_proposal(proposal, workspace=workspace, check_source=True)
+    if proposal.get("proposal_status") == "awaiting_agent" or errors:
+        detail = "; ".join(errors) if errors else "still awaiting_agent"
         print(
-            "[error] Patch not ready to apply. Complete MCP repair, then run:\n"
+            f"[error] Patch not ready to apply ({detail}). Complete MCP repair, then run:\n"
             f"  python -m healing.healing_review --promote {patch_id}"
         )
         return 1

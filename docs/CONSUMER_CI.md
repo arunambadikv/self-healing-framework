@@ -6,12 +6,13 @@ Minimal GitHub Actions pattern for a POM repo that installs healing from git.
 
 | Name | Type | Purpose |
 |------|------|---------|
-| `HEALING_LLM_PROVIDER` | Repository **variable** (optional) | `cursor` (default), `openai`, `gemini`, or `groq` |
-| `HEALING_LLM_MODEL` | Variable (optional) | Override default (`composer-2.5` / `gpt-4.1` / `gemini-3.6-flash` / `openai/gpt-oss-120b`) |
+| `HEALING_LLM_PROVIDER` | Repository **variable** (optional) | `cursor` (default), `openai`, `gemini`, `groq`, or `litellm` |
+| `HEALING_LLM_MODEL` | Variable (optional) | Override default (`composer-2.5` / `gpt-4.1` / `gemini-3.6-flash` / `openai/gpt-oss-120b` / `gpt-4o-mini`) |
 | `CURSOR_API_KEY` | Secret | When provider=`cursor` |
 | `OPENAI_API_KEY` | Secret | When provider=`openai` |
 | `GEMINI_API_KEY` | Secret | When provider=`gemini` |
 | `GROQ_API_KEY` | Secret | When provider=`groq` |
+| `LITE_LLM_KEY` | Secret | When provider=`litellm` (Keyvalue Lite LLM) |
 
 ## Workflow sketch
 
@@ -60,6 +61,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      LITE_LLM_KEY: ${{ secrets.LITE_LLM_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

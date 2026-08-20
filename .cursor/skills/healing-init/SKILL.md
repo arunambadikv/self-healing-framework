@@ -42,8 +42,8 @@ healing-init --verify-mcp
 3. Tell the user:
    - Full guide: `docs/CONSUMER_SETUP.md` in the healing repo (or README link)
    - `cp .env.example .env` and set provider + key if they want automated propose
-     (`cursor`/`openai`/`gemini`/`groq`; defaults `composer-2.5` / `gpt-4.1` /
-     `gemini-3.6-flash` / `openai/gpt-oss-120b`)
+     (`cursor`/`openai`/`gemini`/`groq`/`litellm`; defaults `composer-2.5` / `gpt-4.1` /
+     `gemini-3.6-flash` / `openai/gpt-oss-120b` / `gpt-4o-mini`)
    - `healing-doctor` anytime to re-check
    - Capture/review/apply work without the API key
    - `healing-init` refreshes bundled skills and `.env.example` from the package (even without `--force`)

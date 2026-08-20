@@ -94,7 +94,7 @@ def build_agent_prompt(
 ## Instructions
 
 1. Use Playwright MCP to reach the failure UI, then `browser_snapshot` to verify the correct locator.
-2. Update `{patch_rel}` — replace TODO in `architecture_updates[].after`.
+2. Update `{patch_rel}` — replace TODO in `architecture_updates[].after` with a **different** locator than `before` (no-op copies are invalid).
 3. Update matching `{patch_id}.md` with human-readable summary.
 4. Set `proposal_status` to `"complete"` (remove `"awaiting_agent"`).
 5. Set accurate `risk_level`, `risk_reason`, and `validation_command`.

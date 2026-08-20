@@ -5,13 +5,14 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-PROVIDERS = frozenset({"cursor", "openai", "gemini", "groq"})
+PROVIDERS = frozenset({"cursor", "openai", "gemini", "groq", "litellm"})
 
 DEFAULT_MODELS = {
     "cursor": "composer-2.5",
     "openai": "gpt-4.1",
     "gemini": "gemini-3.6-flash",
     "groq": "openai/gpt-oss-120b",
+    "litellm": "gpt-4o-mini",
 }
 
 KEY_ENV_VARS = {
@@ -19,6 +20,7 @@ KEY_ENV_VARS = {
     "openai": "OPENAI_API_KEY",
     "gemini": "GEMINI_API_KEY",
     "groq": "GROQ_API_KEY",
+    "litellm": "LITE_LLM_KEY",
 }
 
 # OpenAI-compatible chat APIs (cursor-sdk is used for provider=cursor).
@@ -26,6 +28,7 @@ OPENAI_COMPAT_BASE_URLS: dict[str, str | None] = {
     "openai": None,
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "groq": "https://api.groq.com/openai/v1",
+    "litellm": "https://llm.keyvalue.systems",
 }
 
 OPENAI_COMPAT_PROVIDERS = frozenset(OPENAI_COMPAT_BASE_URLS)
@@ -52,6 +55,8 @@ def normalize_provider(raw: str | None) -> str:
     provider = (raw or "cursor").strip().lower() or "cursor"
     if provider in {"google", "google-genai"}:
         provider = "gemini"
+    if provider in {"lite_llm", "lite-llm", "kv-litellm"}:
+        provider = "litellm"
     if provider not in PROVIDERS:
         raise LlmConfigError(
             f"Unknown HEALING_LLM_PROVIDER={raw!r}; expected one of: "

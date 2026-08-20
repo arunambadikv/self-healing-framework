@@ -16,7 +16,7 @@ Project status: [PROJECT_STATUS.md](PROJECT_STATUS.md)
 | `healing` | Always | Core package includes Cursor / OpenAI / Gemini / Groq SDKs |
 | Chromium via Playwright | Running real browser tests | `playwright install chromium` |
 | Node.js 18+ / **`npx`** | Automated MCP propose | Playwright MCP runs via pinned `@playwright/mcp` |
-| **`HEALING_LLM_PROVIDER` + matching key** | Automated MCP propose only | `cursor`→`CURSOR_API_KEY`, `openai`→`OPENAI_API_KEY`, `gemini`→`GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `groq`→`GROQ_API_KEY`. Defaults: `composer-2.5` / `gpt-4.1` / `gemini-3.6-flash` / `openai/gpt-oss-120b` (override with `HEALING_LLM_MODEL`) |
+| **`HEALING_LLM_PROVIDER` + matching key** | Automated MCP propose only | `cursor`→`CURSOR_API_KEY`, `openai`→`OPENAI_API_KEY`, `gemini`→`GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `groq`→`GROQ_API_KEY`, `litellm`→`LITE_LLM_KEY` (Keyvalue Lite LLM proxy). Defaults: `composer-2.5` / `gpt-4.1` / `gemini-3.6-flash` / `openai/gpt-oss-120b` / `gpt-4o-mini` (override with `HEALING_LLM_MODEL`) |
 | Cursor IDE + MCP panel | Interactive slash-skill browser repair | **Not** required for CLI/`mcp_propose_runner` |
 
 **Not required** for failure capture, architecture scan, stub propose, human review, or apply: API key, Node, or Cursor MCP settings.
@@ -44,7 +44,7 @@ healing-init
 
 # 5. Secret for automated propose (optional until you need MCP propose)
 cp .env.example .env
-# edit .env → HEALING_LLM_PROVIDER=cursor|openai|gemini|groq + matching API key
+# edit .env → HEALING_LLM_PROVIDER=cursor|openai|gemini|groq|litellm + matching API key
 
 # 6. Re-check anytime
 healing-doctor
@@ -60,8 +60,8 @@ Optional auto chain after healable locator failures (`selector_break` only — n
 ```bash
 # in .env (loaded automatically — no export needed):
 # HEALING_MCP_AUTO=1
-# HEALING_LLM_PROVIDER=cursor   # or openai | gemini | groq
-# CURSOR_API_KEY=...            # or OPENAI_API_KEY / GEMINI_API_KEY / GROQ_API_KEY
+# HEALING_LLM_PROVIDER=cursor   # or openai | gemini | groq | litellm
+# CURSOR_API_KEY=...            # or OPENAI_API_KEY / GEMINI_API_KEY / GROQ_API_KEY / LITE_LLM_KEY
 pytest tests/ -v
 ```
 
@@ -228,7 +228,7 @@ Artifacts:
 | Symptom | Fix |
 |---------|-----|
 | No failure files after pytest | Confirm `import healing` and `healing-doctor` shows pytest plugin OK; reinstall package |
-| LLM API key required / propose failed | Set `HEALING_LLM_PROVIDER` and matching `CURSOR_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GROQ_API_KEY` in `.env`. Use current defaults (`gemini-3.6-flash`, `openai/gpt-oss-120b`) — older Groq/Gemini IDs were retired. |
+| LLM API key required / propose failed | Set `HEALING_LLM_PROVIDER` and matching `CURSOR_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GROQ_API_KEY` / `LITE_LLM_KEY` in `.env`. Use current defaults (`gemini-3.6-flash`, `openai/gpt-oss-120b`, `gpt-4o-mini`) — older Groq/Gemini IDs were retired. For `litellm`, VPN may be required outside office (Keyvalue IP whitelist). |
 | Groq 413 / TPM / request too large | Free-tier Groq is ~8k tokens/minute; wait a minute and retry `mcp_propose_runner --patch-id P-<id>`. |
 | Applied patch still in `patches/` | Heal/skip archives json/md/agent-task into `applied/` or `skipped/`. Re-run `healing-review --list` to sweep CI re-imports. |
 | MCP / npx errors | Install Node 18+; run `healing-doctor --verify-mcp` |
