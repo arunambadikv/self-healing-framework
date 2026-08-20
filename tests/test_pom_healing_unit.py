@@ -874,14 +874,71 @@ def test_init_workspace_writes_healer_layout_and_skills(tmp_path: Path, monkeypa
     assert result.get("env_example") == ".env.example"
     assert (tmp_path / ".env.example").exists()
     assert "CURSOR_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
-    assert "HEALING_LLM_PROVIDER" in (tmp_path / ".env.example").read_text(encoding="utf-8")
+    assert "GEMINI_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
+    assert "GROQ_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
+    assert "LITE_LLM_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
+    assert "ANTHROPIC_API_KEY" not in (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert (tmp_path / ".playwright-browsers").is_dir()
     env_example = (tmp_path / ".env.example").read_text(encoding="utf-8")
     assert "PLAYWRIGHT_BROWSERS_PATH" in env_example
+    assert "gemini-3.6-flash" in env_example
+    assert "openai/gpt-oss-120b" in env_example
+    assert "gpt-4o-mini" in env_example
+    assert "litellm" in env_example
     assert FAILURES_DIR.resolve() == (tmp_path / "healer-artifacts" / "failures").resolve()
     assert (tmp_path / ".cursor" / "skills" / "healing-init" / "SKILL.md").exists()
     assert (tmp_path / ".cursor" / "mcp.json").exists()
     assert (tmp_path / "healer-artifacts" / "architecture" / "manifest.json").exists()
+    reset_workspace()
+
+
+def test_package_sync_refreshes_stale_skills_after_fingerprint_change(tmp_path: Path, monkeypatch):
+    from healing.package_sync import (
+        mark_packaged_assets_current,
+        refresh_packaged_assets_if_stale,
+        assets_fingerprint_path,
+    )
+    from healing.paths import configure_workspace, reset_workspace
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    skill = tmp_path / ".cursor" / "skills" / "healing-review" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("# stale consumer copy\n", encoding="utf-8")
+    (tmp_path / "healer-artifacts" / "architecture").mkdir(parents=True)
+    assets_fingerprint_path().write_text("outdated-fingerprint\n", encoding="utf-8")
+
+    result = refresh_packaged_assets_if_stale(tmp_path, quiet=True)
+    assert result["refreshed"] is True
+    text = skill.read_text(encoding="utf-8")
+    assert "stale consumer copy" not in text
+    assert "Healing Review" in text
+    assert (tmp_path / ".env.example").exists()
+    assert "GEMINI_API_KEY" in (tmp_path / ".env.example").read_text(encoding="utf-8")
+
+    again = refresh_packaged_assets_if_stale(tmp_path, quiet=True)
+    assert again["refreshed"] is False
+    mark_packaged_assets_current()
+    reset_workspace()
+
+
+def test_pin_playwright_mcp_config_updates_latest_pin(tmp_path: Path, monkeypatch):
+    from healing.mcp_constants import PLAYWRIGHT_MCP_PACKAGE
+    from healing.package_sync import pin_playwright_mcp_config
+    from healing.paths import configure_workspace, reset_workspace
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    mcp = tmp_path / ".cursor" / "mcp.json"
+    mcp.parent.mkdir(parents=True)
+    mcp.write_text(
+        json.dumps({"mcpServers": {"playwright": {"command": "npx", "args": ["@playwright/mcp@latest"]}}}),
+        encoding="utf-8",
+    )
+    assert pin_playwright_mcp_config(tmp_path) is True
+    data = json.loads(mcp.read_text(encoding="utf-8"))
+    assert data["mcpServers"]["playwright"]["args"] == [PLAYWRIGHT_MCP_PACKAGE]
+    assert pin_playwright_mcp_config(tmp_path) is False
     reset_workspace()
 
 
@@ -893,7 +950,9 @@ def test_doctor_reports_ok_for_package_and_warns_without_api_key(tmp_path: Path,
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("HEALING_LLM_PROVIDER", raising=False)
     init_workspace(tmp_path, force=True, scan=False)
     results = run_doctor(tmp_path, verify_mcp=False)
@@ -974,6 +1033,19 @@ def test_patch_validate_rejects_todo_and_stale_before(tmp_path: Path, monkeypatc
         }
     )
     assert any("TODO" in e for e in todo_errs)
+    noop_errs = validate_proposal(
+        {
+            "architecture_updates": [
+                {
+                    "file": "pages/demo_page.py",
+                    "symbol": "btn",
+                    "before": "self.page.get_by_role('button', name='live')",
+                    "after": "self.page.get_by_role('button', name='live')",
+                }
+            ]
+        }
+    )
+    assert any("must differ from before" in e for e in noop_errs)
     ok = validate_proposal(
         {
             "architecture_updates": [
@@ -1367,6 +1439,7 @@ def test_mcp_propose_runner_with_mocked_agent(tmp_path: Path, monkeypatch):
     fake_mod.LocalAgentOptions = FakeLocal
     fake_mod.StdioMcpServerConfig = FakeStdio
     monkeypatch.setitem(sys.modules, "cursor_sdk", fake_mod)
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "cursor")
 
     entry = {"patch_id": patch_id, "failure_id": failure_id}
     ok = process_patch_entry(entry, workspace=tmp_path, api_key="cursor_test")
@@ -1382,7 +1455,10 @@ def test_resolve_llm_config_defaults_and_keys(monkeypatch):
     monkeypatch.delenv("HEALING_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("LITE_LLM_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("HEALING_LLM_MODEL", raising=False)
     monkeypatch.delenv("HEALING_MCP_MODEL", raising=False)
 
@@ -1398,13 +1474,41 @@ def test_resolve_llm_config_defaults_and_keys(monkeypatch):
     assert cfg.api_key == "sk-test"
     assert cfg.model == "gpt-4.1"
     assert cfg.key_env == "OPENAI_API_KEY"
+    assert cfg.openai_base_url is None
 
-    monkeypatch.setenv("HEALING_LLM_PROVIDER", "anthropic")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "ant-test")
-    monkeypatch.setenv("HEALING_LLM_MODEL", "claude-custom")
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "gem-test")
+    monkeypatch.delenv("HEALING_LLM_MODEL", raising=False)
     cfg = resolve_llm_config()
-    assert cfg.provider == "anthropic"
-    assert cfg.model == "claude-custom"
+    assert cfg.provider == "gemini"
+    assert cfg.api_key == "gem-test"
+    assert cfg.model == "gemini-3.6-flash"
+    assert cfg.openai_base_url and "generativelanguage.googleapis.com" in cfg.openai_base_url
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "google-alias")
+    cfg = resolve_llm_config()
+    assert cfg.api_key == "google-alias"
+
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+    cfg = resolve_llm_config()
+    assert cfg.provider == "groq"
+    assert cfg.model == "openai/gpt-oss-120b"
+    assert cfg.openai_base_url == "https://api.groq.com/openai/v1"
+
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "litellm")
+    monkeypatch.setenv("LITE_LLM_KEY", "lite-test")
+    cfg = resolve_llm_config()
+    assert cfg.provider == "litellm"
+    assert cfg.api_key == "lite-test"
+    assert cfg.model == "gpt-4o-mini"
+    assert cfg.key_env == "LITE_LLM_KEY"
+    assert cfg.openai_base_url == "https://llm.keyvalue.systems"
+
+    monkeypatch.setenv("HEALING_LLM_PROVIDER", "lite_llm")
+    cfg = resolve_llm_config()
+    assert cfg.provider == "litellm"
 
     monkeypatch.setenv("HEALING_LLM_PROVIDER", "nope")
     try:
@@ -1487,75 +1591,139 @@ def test_openai_provider_mocked_tool_loop(tmp_path: Path, monkeypatch):
     assert any(e.get("patch_id") == patch_id for e in list_patch_ready())
 
 
-def test_anthropic_provider_mocked_tool_loop(tmp_path: Path, monkeypatch):
+def test_openai_tool_call_payload_preserves_gemini_thought_signature():
+    from types import SimpleNamespace
+
+    from healing.propose_providers.mcp_tool_loop import openai_tool_call_payload
+
+    tc = SimpleNamespace(
+        id="call_1",
+        type="function",
+        function=SimpleNamespace(name="browser_navigate", arguments='{"url":"https://example.com"}'),
+        extra_content={"google": {"thought_signature": "sig"}},
+    )
+    payload = openai_tool_call_payload(tc)
+    assert payload["id"] == "call_1"
+    assert payload["function"]["name"] == "browser_navigate"
+    assert payload["extra_content"]["google"]["thought_signature"] == "sig"
+
+
+def test_retry_delay_seconds_parses_gemini_message():
+    from healing.propose_providers.mcp_tool_loop import retry_delay_seconds
+
+    exc = RuntimeError("Please retry in 8.689276907s.")
+    assert retry_delay_seconds(exc, fallback=1) >= 8.6
+
+
+def test_invalid_tool_feedback_parses_groq_browser_open_file():
+    from healing.propose_providers.mcp_tool_loop import invalid_tool_feedback
+
+    exc = RuntimeError(
+        "Tool call validation failed: attempted to call tool 'browser_open_file' "
+        "which was not in request.tools"
+    )
+    feedback = invalid_tool_feedback(exc, ["browser_snapshot", "write_workspace_file"])
+    assert feedback is not None
+    assert "browser_open_file" in feedback
+    assert "write_workspace_file" in feedback
+    assert "Allowed tools:" not in feedback
+    assert invalid_tool_feedback(RuntimeError("other"), ["browser_snapshot"]) is None
+
+
+def test_mcp_tools_to_openai_keeps_healing_subset_only():
+    from types import SimpleNamespace
+
+    from healing.propose_providers.mcp_tool_loop import mcp_tools_to_openai
+
+    tools = [
+        SimpleNamespace(
+            name="browser_snapshot",
+            description="x" * 400,
+            inputSchema={
+                "$schema": "https://json-schema.org/draft/07/schema",
+                "type": "object",
+                "properties": {"filename": {"type": "string", "description": "y" * 200}},
+            },
+        ),
+        SimpleNamespace(name="browser_run_code", description="eval", inputSchema={"type": "object"}),
+        SimpleNamespace(name="browser_navigate", description="go", inputSchema={"type": "object"}),
+    ]
+    converted = mcp_tools_to_openai(tools)
+    names = [t["function"]["name"] for t in converted]
+    assert names == ["browser_snapshot", "browser_navigate"]
+    assert "$schema" not in converted[0]["function"]["parameters"]
+    assert len(converted[0]["function"]["description"]) <= 160
+
+
+def test_is_capacity_or_size_error_detects_groq_413():
+    from healing.propose_providers.mcp_tool_loop import is_capacity_or_size_error
+
+    exc = RuntimeError(
+        "Error code: 413 - Request too large for model openai/gpt-oss-120b "
+        "on tokens per minute (TPM): Limit 8000, Requested 8504, code: rate_limit_exceeded"
+    )
+    assert is_capacity_or_size_error(exc) is True
+    assert is_capacity_or_size_error(RuntimeError("tool_use_failed")) is False
+
+
+def test_workspace_file_tools_allow_patches_and_reject_pages(tmp_path: Path):
+    from healing.propose_providers.mcp_tool_loop import run_workspace_file_tool
+
+    patch = tmp_path / "healer-artifacts/healing-queue/patches/P-demo.json"
+    patch.parent.mkdir(parents=True)
+    page = tmp_path / "pages/demo_page.py"
+    page.parent.mkdir(parents=True)
+    page.write_text("old", encoding="utf-8")
+
+    wrote = run_workspace_file_tool(
+        tmp_path,
+        "write_workspace_file",
+        {"path": "healer-artifacts/healing-queue/patches/P-demo.json", "content": '{"ok": true}'},
+    )
+    assert wrote.startswith("wrote ")
+    assert json.loads(patch.read_text(encoding="utf-8")) == {"ok": True}
+
+    read = run_workspace_file_tool(tmp_path, "read_workspace_file", {"path": "pages/demo_page.py"})
+    assert read == "old"
+
+    denied = run_workspace_file_tool(
+        tmp_path,
+        "write_workspace_file",
+        {"path": "pages/demo_page.py", "content": "hacked"},
+    )
+    assert denied.startswith("ERROR:")
+    assert page.read_text(encoding="utf-8") == "old"
+
+
+def test_gemini_and_groq_use_openai_compat_provider():
     from healing.llm_config import LlmConfig
-    from healing.mcp_propose_runner import process_patch_entry
-    from healing.paths import QUEUE_PATCHES
+    from healing.propose_providers import get_provider
+    from healing.propose_providers.openai_provider import OpenAICompatProposeProvider
 
-    monkeypatch.chdir(tmp_path)
-    configure_workspace(tmp_path)
-    ensure_queue_dirs()
-    pages = tmp_path / "pages"
-    pages.mkdir()
-    (pages / "demo_page.py").write_text(
-        "class DemoPage:\n"
-        "    @property\n"
-        "    def btn(self):\n"
-        "        return self.page.locator('#old')\n",
-        encoding="utf-8",
+    gemini = LlmConfig(
+        provider="gemini",
+        api_key="g",
+        model="gemini-3.6-flash",
+        key_env="GEMINI_API_KEY",
+        openai_base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
-    failure_id = "F-ant01"
-    patch_id = "P-ant01"
-    json_path = FAILURES_DIR / f"{failure_id}.json"
-    md_path = FAILURES_DIR / f"{failure_id}.md"
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-    json_path.write_text(json.dumps({"failure_id": failure_id, "artifacts": {}}), encoding="utf-8")
-    md_path.write_text("# f", encoding="utf-8")
-    register_failure(failure_id, json_path=json_path, md_path=md_path)
-    patch_path = QUEUE_PATCHES / f"{patch_id}.json"
-    patch_path.parent.mkdir(parents=True, exist_ok=True)
-    stub = {
-        "proposal": {
-            "patch_id": patch_id,
-            "failure_id": failure_id,
-            "proposal_status": "awaiting_agent",
-            "architecture_updates": [
-                {
-                    "file": "pages/demo_page.py",
-                    "symbol": "btn",
-                    "before": "self.page.locator('#old')",
-                    "after": "TODO: replace",
-                }
-            ],
-        }
-    }
-    patch_path.write_text(json.dumps(stub), encoding="utf-8")
-    (QUEUE_PATCHES / f"{patch_id}.md").write_text("# task", encoding="utf-8")
-    mark_failure_proposed(
-        failure_id, patch_id, patch_json=patch_path, patch_md=QUEUE_PATCHES / f"{patch_id}.md"
+    groq = LlmConfig(
+        provider="groq",
+        api_key="g",
+        model="openai/gpt-oss-120b",
+        key_env="GROQ_API_KEY",
+        openai_base_url="https://api.groq.com/openai/v1",
     )
-
-    class FakeProvider:
-        def run_propose(self, prompt, *, workspace, config, storage_state=None):
-            data = json.loads(patch_path.read_text(encoding="utf-8"))
-            data["proposal"]["architecture_updates"][0]["after"] = "self.page.locator('#new')"
-            data["proposal"]["proposal_status"] = "complete"
-            patch_path.write_text(json.dumps(data), encoding="utf-8")
-            return "anthropic done"
-
-    monkeypatch.setattr(
-        "healing.propose_providers.get_provider",
-        lambda cfg: FakeProvider(),
+    litellm = LlmConfig(
+        provider="litellm",
+        api_key="lite",
+        model="gpt-4o-mini",
+        key_env="LITE_LLM_KEY",
+        openai_base_url="https://llm.keyvalue.systems",
     )
-    cfg = LlmConfig(
-        provider="anthropic", api_key="ant-test", model="claude-sonnet-4-5", key_env="ANTHROPIC_API_KEY"
-    )
-    ok = process_patch_entry(
-        {"patch_id": patch_id, "failure_id": failure_id},
-        workspace=tmp_path,
-        config=cfg,
-    )
-    assert ok is True
+    assert isinstance(get_provider(gemini), OpenAICompatProposeProvider)
+    assert isinstance(get_provider(groq), OpenAICompatProposeProvider)
+    assert isinstance(get_provider(litellm), OpenAICompatProposeProvider)
 
 
 def test_ci_workflow_mentions_multi_provider_secrets():
@@ -1563,9 +1731,13 @@ def test_ci_workflow_mentions_multi_provider_secrets():
     ci = (root / ".github/workflows/healing-ci.yml").read_text(encoding="utf-8")
     assert "HEALING_LLM_PROVIDER" in ci
     assert "OPENAI_API_KEY" in ci
-    assert "ANTHROPIC_API_KEY" in ci
+    assert "GEMINI_API_KEY" in ci
+    assert "GROQ_API_KEY" in ci
+    assert "LITE_LLM_KEY" in ci
+    assert "ANTHROPIC_API_KEY" not in ci
     e2e = (root / ".github/workflows/healing-pipeline-e2e.yml").read_text(encoding="utf-8")
     assert "HEALING_LLM_PROVIDER" in e2e
+    assert "LITE_LLM_KEY" in e2e
     assert "steps.llm.outputs.has_key" in e2e
     assert "healing-review --interactive" in e2e
 
@@ -1597,6 +1769,71 @@ def test_choose_merged_entry_keeps_local_applied():
     local = {"patch_id": "P-1", "status": "applied", "processed_at": "2026-01-01T00:00:00+00:00"}
     incoming = {"patch_id": "P-1", "status": "patch_ready", "processed_at": "2026-08-18T00:00:00+00:00"}
     assert choose_merged_entry(local, incoming)["status"] == "applied"
+
+
+def test_move_patch_file_archives_agent_task_and_leaves_pending_empty(tmp_path: Path, monkeypatch):
+    from healing.healing_queue import (
+        _load_index,
+        _save_index,
+        move_patch_file,
+        register_failure,
+        mark_failure_proposed,
+        update_patch_status,
+    )
+    from healing.paths import QUEUE_APPLIED, QUEUE_PATCHES, reset_workspace
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    ensure_queue_dirs()
+    failure_id = "F-arch-1"
+    patch_id = "P-arch-1"
+    json_path = FAILURES_DIR / f"{failure_id}.json"
+    md_path = FAILURES_DIR / f"{failure_id}.md"
+    json_path.write_text("{}", encoding="utf-8")
+    md_path.write_text("# f", encoding="utf-8")
+    register_failure(failure_id, json_path=json_path, md_path=md_path)
+    patch_json = QUEUE_PATCHES / f"{patch_id}.json"
+    patch_md = QUEUE_PATCHES / f"{patch_id}.md"
+    task = QUEUE_PATCHES / f"{patch_id}-agent-task.md"
+    patch_json.write_text('{"proposal": {"patch_id": "P-arch-1"}}', encoding="utf-8")
+    patch_md.write_text("# p", encoding="utf-8")
+    task.write_text("# agent", encoding="utf-8")
+    mark_failure_proposed(failure_id, patch_id, patch_json=patch_json, patch_md=patch_md)
+    update_patch_status(patch_id, "applied")
+    move_patch_file(patch_id, QUEUE_APPLIED)
+    leftover = list(Path(str(QUEUE_PATCHES)).glob(f"{patch_id}*"))
+    assert leftover == []
+    assert (QUEUE_APPLIED / f"{patch_id}.json").exists()
+    assert (QUEUE_APPLIED / f"{patch_id}.md").exists()
+    assert (QUEUE_APPLIED / f"{patch_id}-agent-task.md").exists()
+    entry = next(e for e in _load_index()["entries"] if e.get("patch_id") == patch_id)
+    assert "applied" in entry["patch_json"]
+    reset_workspace()
+
+
+def test_archive_terminal_patch_files_does_not_overwrite_existing_applied(tmp_path: Path, monkeypatch):
+    from healing.healing_queue import _save_index, archive_terminal_patch_files
+    from healing.paths import QUEUE_APPLIED, QUEUE_PATCHES, reset_workspace
+
+    monkeypatch.chdir(tmp_path)
+    configure_workspace(tmp_path)
+    ensure_queue_dirs()
+    patch_id = "P-keep"
+    (QUEUE_APPLIED / f"{patch_id}.json").write_text('{"kept": true}', encoding="utf-8")
+    (QUEUE_PATCHES / f"{patch_id}.json").write_text('{"stub": true}', encoding="utf-8")
+    (QUEUE_PATCHES / f"{patch_id}-agent-task.md").write_text("# leftover", encoding="utf-8")
+    _save_index(
+        {
+            "version": 1,
+            "entries": [{"patch_id": patch_id, "failure_id": "F-keep", "status": "applied"}],
+        }
+    )
+    assert archive_terminal_patch_files() == 1
+    leftover = list(Path(str(QUEUE_PATCHES)).glob(f"{patch_id}*"))
+    assert leftover == []
+    assert json.loads((QUEUE_APPLIED / f"{patch_id}.json").read_text(encoding="utf-8")) == {"kept": True}
+    assert (QUEUE_APPLIED / f"{patch_id}-agent-task.md").exists()
+    reset_workspace()
 
 
 def test_artifact_import_merges_download_and_rewrites_paths(tmp_path: Path, monkeypatch):
@@ -1683,8 +1920,17 @@ def test_artifact_import_merges_download_and_rewrites_paths(tmp_path: Path, monk
         )
     )
     cmd = dest_patch["proposal"]["validation_command"]
-    assert "hostedtoolcache" not in cmd
-    assert "tests/test_demo.py" in cmd
+    from healing.pom_apply import parse_validation_command
+    import sys
+
+    argv = parse_validation_command(cmd)
+    assert argv[0] == sys.executable
+    assert argv[1:4] == ["-m", "pytest", "tests/test_demo.py::test_x[chromium]"]
+    assert "/home/runner/work/" not in cmd
+    # On GHA runners sys.executable itself lives under hostedtoolcache; only
+    # assert the CI interpreter path is gone when we are not that runner.
+    if "hostedtoolcache" not in sys.executable:
+        assert "hostedtoolcache" not in cmd
     assert str(tmp_path) in dest_patch["proposal"]["links"]["failure_json"]
     index = _load_index()
     entry = next(e for e in index["entries"] if e.get("patch_id") == patch_id)
@@ -1696,7 +1942,7 @@ def test_artifact_import_merges_download_and_rewrites_paths(tmp_path: Path, monk
 def test_artifact_import_keeps_local_applied_over_incoming_ready(tmp_path: Path, monkeypatch):
     from healing.artifact_import import import_ci_artifacts
     from healing.healing_queue import _load_index, _save_index
-    from healing.paths import reset_workspace
+    from healing.paths import QUEUE_APPLIED, QUEUE_PATCHES, reset_workspace
 
     monkeypatch.chdir(tmp_path)
     configure_workspace(tmp_path)
@@ -1722,6 +1968,12 @@ def test_artifact_import_keeps_local_applied_over_incoming_ready(tmp_path: Path,
     (nested / "failures").mkdir(parents=True)
     (nested / "healing-queue" / "patches").mkdir(parents=True)
     (nested / "failures" / f"{failure_id}.json").write_text("{}", encoding="utf-8")
+    (nested / "healing-queue" / "patches" / f"{patch_id}.json").write_text(
+        '{"proposal": {"patch_id": "P-keep-applied"}}', encoding="utf-8"
+    )
+    (nested / "healing-queue" / "patches" / f"{patch_id}-agent-task.md").write_text(
+        "# leftover task", encoding="utf-8"
+    )
     (nested / "healing-queue" / "index.json").write_text(
         json.dumps(
             {
@@ -1744,6 +1996,10 @@ def test_artifact_import_keeps_local_applied_over_incoming_ready(tmp_path: Path,
     index = _load_index()
     entry = next(e for e in index["entries"] if e.get("patch_id") == patch_id)
     assert entry["status"] == "applied"
+    leftover = list(Path(str(QUEUE_PATCHES)).glob(f"{patch_id}*"))
+    assert leftover == []
+    assert (QUEUE_APPLIED / f"{patch_id}.json").exists()
+    assert (QUEUE_APPLIED / f"{patch_id}-agent-task.md").exists()
     reset_workspace()
 
 

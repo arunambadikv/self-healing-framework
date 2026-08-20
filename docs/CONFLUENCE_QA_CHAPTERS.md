@@ -4,7 +4,7 @@
 
 | | |
 |--|--|
-| **What it is** | An installable helper package named `healing` (version **0.1.1**) |
+| **What it is** | An installable helper package named `healing` (version **0.1.2**) |
 | **Where it lives** | [GitHub repo](https://github.com/arunambadikv/self-healing-framework) |
 | **Built with** | Python 3.10+, Playwright (browser tests), pytest (test runner). Optional: Cursor tools for automated browser-based suggestions |
 | **Who it’s for** | QA engineers, automation engineers, Chapters audience |
@@ -164,9 +164,9 @@ healing-doctor --strict       # treat warnings as failures (useful in CI)
 
 - **healing package** — can Python load the package? If not: install failed, or a local folder is hiding it.  
 - **pytest plugin** — is the helper hooked into the test runner? If not: tests run but **no failure reports** are written.  
-- **cursor-sdk** — optional. Warning if you did not install the `[mcp]` extra. Saving failures and human review still work.  
+- **LLM SDK** — Cursor SDK + OpenAI-compatible client ship in the core package (Gemini/Groq use the same client).  
 - **chromium** — is the Playwright browser installed? If not: `playwright install chromium`.  
-- **npx / mcp.json / CURSOR_API_KEY** — only needed for automated browser-based suggestions.  
+- **npx / mcp.json / API key** — only needed for automated browser-based suggestions (`HEALING_LLM_PROVIDER` + matching key).  
 - **healing.toml / result folders / skills** — is the working layout present, and can Cursor find the playbooks?
 
 **How to read the summary:** fix **errors** before a demo. **Warnings** about API key / Node / browser assistant are fine if you only want capture + human review. Use `--verify-mcp` when the next step is live auto-suggest.
@@ -189,7 +189,7 @@ These are short instruction files that ship with the package and get copied into
 
 ### `/healing-init`
 
-Sets up an existing page-object project: creates `healer-artifacts/` and config, failure/queue/catalogue folders, copies playbooks, adds browser-assistant config and `.env.example` if missing, can scan pages, then runs doctor. It does **not** edit your page or test code. After a package upgrade, re-run with `--force` if playbooks need refreshing. Same thing from the terminal: `healing-init`.
+Sets up an existing page-object project: creates `healer-artifacts/` and config, failure/queue/catalogue folders, copies playbooks, adds browser-assistant config and `.env.example` if missing, can scan pages, then runs doctor. It does **not** edit your page or test code. After a package upgrade from git, the next `pytest` or `healing-doctor` refreshes playbooks and `.env.example` automatically. `--force` replaces `healing.toml` / `mcp.json`. Same thing from the terminal: `healing-init`.
 
 ### `/architecture-discovery`
 
@@ -205,7 +205,7 @@ The “look at the real screen” path for broken locators: read the failure + c
 
 ### `/healing-review`
 
-The only playbook allowed to **apply** changes. Shows context, screenshot, and before → after. The person picks **Heal**, **Skip**, or **Defer**. After that choice, the command runs once (no second “are you sure?” loop). Same idea from the terminal: `healing-review --interactive`. This is the visible safety gate stakeholders care about.
+The only playbook allowed to **apply** changes. Shows context, screenshot, and before → after. The person picks **Heal**, **Skip**, or **Defer**. After that choice, the command runs once (no second “are you sure?” loop). Heal/skip also moves the patch files (json, md, agent-task) out of pending `patches/` into `applied/` or `skipped/`. Same idea from the terminal: `healing-review --interactive`. This is the visible safety gate stakeholders care about.
 
 **Usual order:** set up once → tests fail (reports appear automatically) → refresh catalogue if needed → propose (+ locator repair) → review.
 
@@ -239,13 +239,13 @@ return self.page.get_by_role("button", name="Login")
 
 ```mermaid
 flowchart LR
-  A[Create venv] --> B["pip install healing[mcp]"]
+  A[Create venv] --> B["pip install healing"]
   B --> C[playwright install chromium]
   C --> D[healing-init]
   D --> E[cp .env.example .env]
   E --> F[healing-doctor]
   F --> G[pytest tests/]
-  G -->|optional MCP propose| H[CURSOR_API_KEY + HEALING_MCP_AUTO]
+  G -->|optional MCP propose| H[HEALING_LLM_PROVIDER + API key + HEALING_MCP_AUTO]
 ```
 
 📎 [installation-flow.mmd](attachments/installation-flow.mmd)
@@ -253,11 +253,11 @@ flowchart LR
 | Need | Detail |
 |------|--------|
 | **Python** | 3.10 or newer |
-| **Always** | playwright, pytest, pytest-playwright, pyyaml, rich, python-dotenv |
-| **Only for auto browser suggestions** | install with `healing[mcp]`, Node/`npx`, `CURSOR_API_KEY`, Chromium |
+| **Always** | playwright, pytest, pytest-playwright, pyyaml, rich, python-dotenv, cursor-sdk, openai, mcp |
+| **Only for auto browser suggestions** | Node/`npx`, `HEALING_LLM_PROVIDER` + matching key, Chromium |
 
 ```bash
-pip install "healing[mcp] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+pip install "healing @ git+https://github.com/arunambadikv/self-healing-framework.git"
 playwright install chromium
 healing-init && cp .env.example .env   # add API key only if you use auto-suggest
 healing-doctor
@@ -272,7 +272,7 @@ healing-mcp-propose --process-all
 healing-review --interactive
 ```
 
-Optional auto path (only when a run actually captured healable locator failures): put `HEALING_MCP_AUTO=1` and `CURSOR_API_KEY=…` in `.env`, then run `pytest`.
+Optional auto path (only when a run actually captured healable locator failures): put `HEALING_MCP_AUTO=1`, `HEALING_LLM_PROVIDER=…`, and the matching API key in `.env`, then run `pytest`.
 
 Built-in demos with **intentionally broken** locators (so you can practise without waiting for a real flake):
 
@@ -296,7 +296,7 @@ Only **broken locators** are treated as healable. Session/login problems, networ
 - No silent apply — a person must decide  
 - Only locator breaks are patched; other failure types are recorded for context  
 - Page objects are expected under `pages/`  
-- Auto browser suggest needs API key + Node + the `[mcp]` install option  
+- Auto browser suggest needs API key + Node (SDKs ship in the core package)  
 - We do not rewrite assertions or whole test flows  
 - Install from Git for now (public package index later)  
 - Standard (sync) Playwright is the supported path  
@@ -309,10 +309,10 @@ Only **broken locators** are treated as healable. Session/login problems, networ
 | What you see | What to do |
 |--------------|------------|
 | No failure report after a red test | Run `healing-doctor`; reinstall; check you did not create a shadowing `healing/` folder |
-| Message about `CURSOR_API_KEY` | Copy `.env.example` to `.env` and set the key |
+| Message about an API key | Copy `.env.example` to `.env` and set `HEALING_LLM_PROVIDER` + matching key |
 | Browser-assistant / `npx` errors | Install Node 18+; run `healing-doctor --verify-mcp` |
 | Chromium missing | Set `PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers` in `.env`, then `playwright install chromium` |
-| Cursor playbooks missing | Run `healing-init` again (add `--force` if needed) |
+| Cursor playbooks missing | Run `pytest` or `healing-doctor` (auto-refresh) or `healing-init` |
 | Suggestion points at the wrong control | Refresh the catalogue: `healing-scan` or `/architecture-discovery` |
 
 ---

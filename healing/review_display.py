@@ -17,6 +17,17 @@ SKIP_REASONS = (
     "Out of scope for this session",
 )
 
+# Fixed section labels — interactive + --show always use this order.
+CARD_LABELS = (
+    "Patch summary",
+    "Patch name",
+    "Why failure happened",
+    "Error",
+    "Screenshot",
+    "Before",
+    "After",
+)
+
 
 def _short_test_name(nodeid: str) -> str:
     if "::" in nodeid:
@@ -59,7 +70,91 @@ def _failure_context(failure_id: str) -> dict[str, Any]:
         "failing_action": failing.get("action", ""),
         "locator_id": failing.get("locator_id", ""),
         "screenshot": screenshot,
+        "classification": failure.get("classification", ""),
     }
+
+
+def _first_update(proposal: dict[str, Any]) -> dict[str, Any]:
+    updates = proposal.get("architecture_updates") or []
+    return updates[0] if updates and isinstance(updates[0], dict) else {}
+
+
+def _one_sentence_summary(proposal: dict[str, Any], ctx: dict[str, Any]) -> str:
+    reason = (proposal.get("risk_reason") or "").strip()
+    if reason:
+        # Keep to one sentence / ~160 chars for the card.
+        first = reason.split(". ")[0].strip().rstrip(".")
+        if first:
+            return first + "."
+    upd = _first_update(proposal)
+    symbol = upd.get("symbol") or ctx.get("locator_id") or "locator"
+    test = ctx.get("test_short") or "test"
+    return f"Replace broken {symbol} locator so {test} can proceed."
+
+
+def _why_failure_happened(proposal: dict[str, Any], ctx: dict[str, Any]) -> str:
+    parts: list[str] = []
+    classification = (
+        proposal.get("classification")
+        or ctx.get("classification")
+        or ""
+    ).strip()
+    if classification:
+        parts.append(classification)
+    ref = ctx.get("architecture_ref") or ""
+    if ctx.get("failing_page") and ctx.get("failing_method"):
+        step = (
+            f"{ctx['failing_page']}.{ctx['failing_method']}"
+            f" ({ctx.get('failing_action') or 'action'})"
+        )
+        parts.append(f"failed at {step}")
+    elif ref:
+        parts.append(f"failed on {ref}")
+    if ctx.get("error_type"):
+        parts.append(ctx["error_type"])
+    msg = (ctx.get("error_message") or "").strip()
+    if msg:
+        # Prefer the first call-log / timeout line for clarity.
+        first_line = msg.splitlines()[0].strip()
+        if first_line and first_line not in parts:
+            parts.append(first_line)
+    return " — ".join(parts) if parts else "(failure context unavailable)"
+
+
+def _patch_error_block(
+    proposal: dict[str, Any],
+    *,
+    workspace: Path,
+) -> str:
+    """Validation / completeness problems with the proposal, if any."""
+    from healing.patch_validate import validate_proposal
+
+    errors = validate_proposal(proposal, workspace=workspace, check_source=True)
+    if errors:
+        return "; ".join(errors)
+    after = str(_first_update(proposal).get("after") or "")
+    if "TODO" in after:
+        return "architecture_updates[].after still contains TODO"
+    return "None"
+
+
+def _screenshot_display(ctx: dict[str, Any]) -> str:
+    shot = ctx.get("screenshot") or ""
+    if not shot:
+        return "(none)"
+    try:
+        return str(Path(shot).resolve())
+    except OSError:
+        return str(shot)
+
+
+def _section(label: str, body: str) -> list[str]:
+    text = (body or "").strip() or "(none)"
+    lines = [label]
+    for part in text.splitlines() or ["(none)"]:
+        lines.append(f"  {part}" if part.strip() else "")
+    lines.append("")
+    return lines
 
 
 def format_patch_list(entries: list[dict[str, Any]], *, workspace: Path) -> str:
@@ -108,82 +203,57 @@ def format_review_card(
     index: int | None = None,
     total: int | None = None,
 ) -> str:
+    """Always the same fixed layout for interactive review and --show."""
     proposal = payload.get("proposal") or payload
     failure_id = proposal.get("failure_id", "")
     ctx = _failure_context(failure_id)
+    upd = _first_update(proposal)
     risk = _risk_label(proposal.get("risk_level", "unknown"))
 
-    header = f"Patch {patch_id}"
+    progress = ""
     if index is not None and total is not None:
-        header = f"Patch {index} of {total} — {patch_id}"
+        progress = f" ({index} of {total})"
 
     width = 62
-    lines = [
+    lines: list[str] = [
         "═" * width,
-        f"  Healing Review — {header}",
-        f"  Failure: {failure_id}" if failure_id else "",
+        f"  Healing Review{progress}  [risk: {risk}]",
         "═" * width,
         "",
     ]
 
-    if ctx:
-        lines.extend(
-            [
-                "TEST",
-                f"  {ctx.get('test_nodeid', 'unknown')}",
-                "",
-                "WHAT FAILED",
-            ]
-        )
-        if ctx.get("architecture_ref"):
-            lines.append(f"  Ref: {ctx['architecture_ref']}")
-        if ctx.get("failing_page") and ctx.get("failing_method"):
-            lines.append(
-                f"  Step: {ctx['failing_page']}.{ctx['failing_method']} ({ctx.get('failing_action', '')})"
-            )
-        if ctx.get("page_url"):
-            lines.append(f"  URL: {ctx['page_url']}")
-        if ctx.get("error_type"):
-            lines.append(f"  Error: {ctx['error_type']}")
-            if ctx.get("error_message"):
-                lines.append(f"  {ctx['error_message'][:200]}")
-        if ctx.get("screenshot"):
-            shot = ctx["screenshot"]
-            try:
-                shot_display = str(Path(shot).resolve())
-            except OSError:
-                shot_display = shot
-            lines.append(f"  Screenshot: {shot_display}")
-        lines.append("")
+    lines.extend(_section("Patch summary", _one_sentence_summary(proposal, ctx)))
+    lines.extend(_section("Patch name", patch_id))
+    lines.extend(_section("Why failure happened", _why_failure_happened(proposal, ctx)))
+    lines.extend(
+        _section("Error", _patch_error_block(proposal, workspace=workspace))
+    )
+    lines.extend(_section("Screenshot", _screenshot_display(ctx)))
 
-    updates = proposal.get("architecture_updates") or []
-    if updates:
-        lines.extend([f"PROPOSED FIX  [risk: {risk}]", ""])
-        for upd in updates:
-            file_ref = _relative_file(upd.get("file", ""), workspace)
-            lines.extend(
-                [
-                    f"  File:   {file_ref}",
-                    f"  Symbol: {upd.get('symbol', '?')}",
-                    "",
-                    "  Before:",
-                    f"    {upd.get('before', '')}",
-                    "  After:",
-                    f"    {upd.get('after', '')}",
-                    "",
-                ]
-            )
+    before = str(upd.get("before") or "").strip() or "(none)"
+    after = str(upd.get("after") or "").strip() or "(none)"
+    file_ref = _relative_file(str(upd.get("file") or ""), workspace) if upd.get("file") else ""
+    symbol = str(upd.get("symbol") or "").strip()
+    locator_meta = " · ".join(p for p in (file_ref, symbol) if p)
 
-    validation = proposal.get("validation_command", "")
+    before_body = before
+    if locator_meta:
+        before_body = f"{before}\n({locator_meta})"
+    lines.extend(_section("Before", before_body))
+    lines.extend(_section("After", after))
+
+    validation = (proposal.get("validation_command") or "").strip()
     if validation:
-        lines.extend(["VALIDATION (runs on heal)", f"  {validation}", ""])
+        lines.extend(_section("Validation (runs on heal)", validation))
 
     lines.append("─" * width)
-    return "\n".join(line for line in lines if line is not None)
+    return "\n".join(lines)
 
 
 def format_menu(*, high_risk: bool = False) -> str:
     lines = [
+        "Select an option, then press Enter to continue:",
+        "",
         "  [1] Heal     — apply patch and run validation",
         "  [2] Skip     — reject with reason (writes RCA)",
         "  [3] Defer    — decide later (status → deferred)",

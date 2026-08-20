@@ -19,12 +19,12 @@ class OrangeHrmDashboardPage(BasePage):
     @property
     def healing_demo_dashboard_heading(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
-        return self.page.get_by_role("heading", name="Home")
+        return self.page.get_by_role("heading", name="Dashboard")
 
     @property
     def healing_demo_pim_link(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
-        return self.page.get_by_role("link", name="Employee List")
+        return self.page.get_by_role("link", name="PIM")
 
     def ready_locator(self) -> Locator:
         return self.dashboard_heading

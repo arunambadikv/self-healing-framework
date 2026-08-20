@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from healing.llm_config import LlmConfig
+from healing.llm_config import OPENAI_COMPAT_PROVIDERS, LlmConfig
 from healing.propose_providers.base import ProposeProvider
 
 
@@ -11,12 +11,8 @@ def get_provider(config: LlmConfig) -> ProposeProvider:
         from healing.propose_providers.cursor_provider import CursorProposeProvider
 
         return CursorProposeProvider()
-    if config.provider == "openai":
-        from healing.propose_providers.openai_provider import OpenAIProposeProvider
+    if config.provider in OPENAI_COMPAT_PROVIDERS:
+        from healing.propose_providers.openai_provider import OpenAICompatProposeProvider
 
-        return OpenAIProposeProvider()
-    if config.provider == "anthropic":
-        from healing.propose_providers.anthropic_provider import AnthropicProposeProvider
-
-        return AnthropicProposeProvider()
+        return OpenAICompatProposeProvider()
     raise ValueError(f"Unsupported provider: {config.provider}")

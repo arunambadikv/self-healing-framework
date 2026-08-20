@@ -107,7 +107,7 @@ def _check_cursor_sdk() -> CheckResult:
         return CheckResult(
             "cursor-sdk",
             "warn",
-            "not installed — pip install 'healing[mcp]' for automated MCP propose",
+            "not installed — reinstall healing (cursor-sdk ships with the package)",
         )
 
 
@@ -320,29 +320,21 @@ def _check_provider_sdk(workspace: Path) -> CheckResult:
 
     if cfg.provider == "cursor":
         return _check_cursor_sdk()
-    if cfg.provider == "openai":
+    if cfg.provider in ("openai", "gemini", "groq", "litellm"):
         try:
             import openai  # noqa: F401
             import mcp  # noqa: F401
 
-            return CheckResult("LLM SDK", "ok", "openai + mcp installed")
+            detail = f"openai + mcp installed (provider={cfg.provider}"
+            if cfg.openai_base_url:
+                detail += f", base_url={cfg.openai_base_url}"
+            detail += ")"
+            return CheckResult("LLM SDK", "ok", detail)
         except ImportError:
             return CheckResult(
                 "LLM SDK",
                 "warn",
-                "pip install 'healing[openai]' or 'healing[propose]' for OpenAI propose",
-            )
-    if cfg.provider == "anthropic":
-        try:
-            import anthropic  # noqa: F401
-            import mcp  # noqa: F401
-
-            return CheckResult("LLM SDK", "ok", "anthropic + mcp installed")
-        except ImportError:
-            return CheckResult(
-                "LLM SDK",
-                "warn",
-                "pip install 'healing[anthropic]' or 'healing[propose]' for Anthropic propose",
+                "reinstall healing (openai + mcp ship with the package)",
             )
     return CheckResult("LLM SDK", "warn", f"unknown provider {cfg.provider}")
 
@@ -468,6 +460,9 @@ def run_doctor(
 ) -> list[CheckResult]:
     workspace = workspace.resolve()
     load_dotenv_files(workspace)
+    from healing.package_sync import refresh_packaged_assets_if_stale
+
+    refresh_packaged_assets_if_stale(workspace)
     checks: list[Callable[[], CheckResult]] = [
         _check_package_import,
         _check_pytest_plugin,
@@ -504,14 +499,14 @@ def format_report(results: list[CheckResult]) -> str:
         )
         lines.append(
             "      Automated MCP propose needs HEALING_LLM_PROVIDER + matching key "
-            "(CURSOR_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY)."
+            "(CURSOR_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY / GROQ_API_KEY)."
         )
     if any(r.name == "mcp.json" for r in results):
         lines.append("Note: Cursor Settings → MCP is only for interactive IDE use.")
         lines.append("      CLI mcp_propose_runner starts Playwright MCP via stdio on its own.")
     lines.append(
-        "Note: architecture-discovery runs automatically on healing-init and on the next "
-        "pytest after a package install/update (or when the manifest is stale)."
+        "Note: architecture-discovery and Cursor skills refresh automatically on the next "
+        "pytest (or healing-doctor) after a package install/update from git."
     )
     return "\n".join(lines)
 

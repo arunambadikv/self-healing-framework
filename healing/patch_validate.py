@@ -27,6 +27,17 @@ def validate_proposal_structure(proposal: dict[str, Any]) -> list[str]:
         after = str(update.get("after", ""))
         if "TODO" in after:
             errors.append(f"architecture_updates[{i}].after still contains TODO")
+        before = str(update.get("before", ""))
+        if (
+            before.strip()
+            and after.strip()
+            and before.strip() == after.strip()
+            and "TODO" not in after
+        ):
+            errors.append(
+                f"architecture_updates[{i}].after must differ from before "
+                "(no-op locator change)"
+            )
     return errors
 
 

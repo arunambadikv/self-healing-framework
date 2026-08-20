@@ -29,6 +29,23 @@ def resolve_storage_state_path(failure: dict[str, Any], workspace: Path) -> Path
     return path if path.exists() else None
 
 
+def _format_propose_error(exc: BaseException) -> str:
+    """Unwrap ExceptionGroup / TaskGroup so the real API or MCP error is visible."""
+    parts: list[str] = [str(exc).strip() or type(exc).__name__]
+    sub = getattr(exc, "exceptions", None)
+    if sub:
+        for inner in sub:
+            parts.append(_format_propose_error(inner))
+    cause = exc.__cause__ or exc.__context__
+    if cause is not None and cause is not exc:
+        parts.append(_format_propose_error(cause))
+    seen: list[str] = []
+    for part in parts:
+        if part and part not in seen:
+            seen.append(part)
+    return " | ".join(seen)
+
+
 def _workspace_relative(path: Path, workspace: Path) -> str:
     try:
         return str(path.resolve().relative_to(workspace.resolve()))
@@ -77,7 +94,7 @@ def build_agent_prompt(
 ## Instructions
 
 1. Use Playwright MCP to reach the failure UI, then `browser_snapshot` to verify the correct locator.
-2. Update `{patch_rel}` — replace TODO in `architecture_updates[].after`.
+2. Update `{patch_rel}` — replace TODO in `architecture_updates[].after` with a **different** locator than `before` (no-op copies are invalid).
 3. Update matching `{patch_id}.md` with human-readable summary.
 4. Set `proposal_status` to `"complete"` (remove `"awaiting_agent"`).
 5. Set accurate `risk_level`, `risk_reason`, and `validation_command`.
@@ -184,7 +201,7 @@ def process_patch_entry(
         )
         print(f"[healing] Agent: {summary[:200]}")
     except Exception as exc:
-        print(f"[error] Propose failed for {patch_id}: {exc}")
+        print(f"[error] Propose failed for {patch_id}: {_format_propose_error(exc)}")
         return False
 
     payload = json.loads(patch_path.read_text(encoding="utf-8"))
@@ -217,11 +234,16 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Emit JSON for --list.")
     args = parser.parse_args()
     workspace = args.workspace.resolve()
+    from healing.paths import configure_workspace
+
+    configure_workspace(workspace)
     ensure_queue_dirs()
 
     from healing.doctor import load_dotenv_files
+    from healing.package_sync import refresh_packaged_assets_if_stale
 
     load_dotenv_files(workspace)
+    refresh_packaged_assets_if_stale(workspace)
 
     if args.list:
         awaiting = list_awaiting_agent()

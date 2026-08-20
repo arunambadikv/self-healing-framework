@@ -54,6 +54,9 @@ def pytest_sessionstart(session) -> None:
     configure_workspace(workspace)
     reset_session_state()
     install_playwright_tracing()
+    from healing.package_sync import refresh_packaged_assets_if_stale
+
+    refresh_packaged_assets_if_stale(workspace)
     # After pip install/update (or stale pages), refresh architecture automatically.
     force = bool(session.config.getoption("--healing-scan-architecture"))
     run_auto_architecture_discovery(workspace, force=force)

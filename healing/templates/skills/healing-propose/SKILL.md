@@ -19,6 +19,13 @@ Turn new failures into reviewable patch proposals without applying changes.
    - Playwright MCP: navigate + snapshot
    - Write `healer-artifacts/healing-queue/patches/P-<id>.json` and `.md`
 4. Or batch stubs: `python -m healing.pom_propose --process-all` then complete TODOs via MCP.
+   CLI/CI path (uses `HEALING_LLM_PROVIDER` + key from `.env`):
+   ```bash
+   python -m healing.mcp_propose_runner --process-all
+   ```
+   OpenAI / Gemini / Groq propose with Playwright MCP plus `read_workspace_file` /
+   `write_workspace_file` (patches under `healer-artifacts/healing-queue/patches/` only).
+   Do not invent tool names such as `browser_open_file`.
 5. After MCP completes `P-*.json`, promote to review queue:
    ```bash
    python -m healing.healing_review --promote P-<id>

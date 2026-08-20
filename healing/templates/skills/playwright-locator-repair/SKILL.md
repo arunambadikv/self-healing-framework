@@ -28,6 +28,9 @@ Repair broken Playwright locators in `pages/*.py` safely and minimally. Use with
    - Do not only open `base_url` when `page_url` is a deeper authenticated page.
 4. Propose locators from the live page (not guesses).
 5. Write `healer-artifacts/healing-queue/patches/P-<id>.json` with `architecture_updates` targeting **one property** in `pages/*.py`.
+   Automated `mcp_propose_runner` (OpenAI/Gemini/Groq) must use `write_workspace_file` for
+   that JSON/MD (never `pages/*.py`) and only Playwright `browser_*` tools that were listed.
+   Do not call `browser_open_file`.
 6. Promote to review queue (same as CLI after `mcp_propose_runner`):
    ```bash
    python -m healing.healing_review --promote P-<id>

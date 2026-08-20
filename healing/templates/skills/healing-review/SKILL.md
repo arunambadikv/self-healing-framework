@@ -18,7 +18,7 @@ Human-in-the-loop is **only at the decision**. After the user picks Heal / Skip 
 
 ### Terminal (recommended)
 
-`healing-review` auto-merges leftover `gh run download` folders (e.g. `healing-pipeline-e2e/`) into `healer-artifacts/` on startup. After CI:
+`healing-review` auto-merges leftover `gh run download` folders (e.g. `healing-pipeline-e2e/`) into `healer-artifacts/` on startup, then **archives applied/skipped patch files** so they do not sit in pending `patches/` (including `-agent-task.md` and CI re-imports). After CI:
 
 ```bash
 gh run download
@@ -40,11 +40,29 @@ python -m healing.healing_review --list
 
 1. Run `python -m healing.healing_review --promote-all` if any patches may still be `awaiting_agent`. (Review already auto-imported CI downloads; `healing-import` is optional if you downloaded artifacts without opening review yet.)
 2. Run `python -m healing.healing_review --list` (read-only table of `patch_ready` patches).
-3. For **each** pending patch:
+3. For **each** pending patch (one at a time — wait for decision before the next):
    - Run `python -m healing.healing_review --show P-<id>` for the review card.
-   - If the card (or failure JSON) lists a **Screenshot** path, **Read** that PNG so the image appears in chat before asking.
-   - Present failure context, screenshot, before → after, risk, and `validation_command` in plain language.
-   - Use **AskQuestion** (or equivalent) with options:
+   - If the card lists a **Screenshot** path, **Read** that PNG so the image appears in chat.
+   - Present the card in this **exact fixed order every time** (do not omit sections; use `(none)` when empty):
+
+     ```
+     Patch summary
+       <one sentence>
+     Patch name
+       P-<id>
+     Why failure happened
+       <classification / step / timeout>
+     Error
+       <proposal validation problems, or None>
+     Screenshot
+       <path or image>
+     Before
+       <locator expression>
+     After
+       <locator expression>
+     ```
+
+     Then the selectable options (AskQuestion / Continue):
      - **Heal** — apply patch now
      - **Skip** — reject (include a short reason in the same choice when possible)
      - **Defer** — mark deferred (status → `deferred`; re-queue later with `--promote` or list via `--list-deferred`)
@@ -58,7 +76,7 @@ python -m healing.healing_review --list
 python -m healing.healing_review --patch P-<id> --decision heal --yes
 ```
 
-`--yes` confirms high-risk patches when the user already approved in chat. Runs validation, updates `pages/*.py` via `healing.pom_apply`, moves patch to `applied/`. Report success/failure; then continue to the next patch.
+`--yes` confirms high-risk patches when the user already approved in chat. Runs validation, updates `pages/*.py` via `healing.pom_apply`, then **moves all related pending files** (`P-<id>.json`, `.md`, `-agent-task.md`) to `healer-artifacts/healing-queue/applied/`. Pending `patches/` must not keep leftovers. Report success/failure; then continue to the next patch.
 
 Prefer the CLI over hand-editing so only `architecture_updates[].file` under `pages/` are touched.
 
@@ -68,7 +86,7 @@ Prefer the CLI over hand-editing so only `architecture_updates[].file` under `pa
 python -m healing.healing_review --patch P-<id> --decision skip --reason "suspected app regression" --yes
 ```
 
-If the user did not give a reason, ask once for a short reason, then run skip. Writes `healer-artifacts/healing-queue/skipped/P-<id>-rca.md`.
+If the user did not give a reason, ask once for a short reason, then run skip. Writes `healer-artifacts/healing-queue/skipped/P-<id>-rca.md` and moves `P-<id>.json` / `.md` / `-agent-task.md` out of pending `patches/` into `skipped/`.
 
 ### Defer (after user chose Defer)
 
@@ -119,8 +137,7 @@ python -m healing.healing_review --summary
 
 ## Presentation rules
 
-- Use plain language; include test name, page class, method, and locator id.
-- Always show `validation_command` before heal.
+- **Always** use the fixed card order: Patch summary → Patch name → Why failure happened → Error → Screenshot → Before → After → options.
 - Always surface the failure **screenshot** (Read the PNG) when the path exists.
 - Never heal without an explicit user decision for that patch; once decided, run CLI with `--yes` without further prompts.
-- One patch at a time — wait for user decision before moving to the next.
+- One patch at a time — wait for user decision (select + Continue) before moving to the next.

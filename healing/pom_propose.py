@@ -110,7 +110,7 @@ def build_proposal_prompt(
 1. Reach the failure UI using session restore or step replay above (do not guess locators).
 2. `browser_snapshot` — find the real element for `{failure.get('architecture_ref')}`.
 3. Update the existing stub at `healer-artifacts/healing-queue/patches/{patch_id}.json` (patch id `{patch_id}`)
-4. Include `architecture_updates` targeting `pages/*.py` only (file, symbol, line, before, after)
+4. Include `architecture_updates` targeting `pages/*.py` only (file, symbol, line, before, after). `after` must differ from `before`.
 5. Set `risk_level` (low/medium/high) and `validation_command`
 6. Write matching `.md` human summary
 

@@ -8,7 +8,8 @@
 - **Tests:** page-object fixtures (e.g. `orangehrm_login` in [`pages/orangehrm_login_page.py`](pages/orangehrm_login_page.py)); override app via `HEALING_BASE_URL`
 - **Locators:** Python properties on page classes only (no `locator_registry.yaml` in runtime path)
 - **Failures:** `healer-artifacts/failures/F-{test-name}-{YYYYMMDD-HHMMSS}.json` + `.md` + matching `screenshot-F-*.png` / `storage-state-F-*.json` (auto on pytest failure; `-2`/`-3` on same-second collision)
-- **Patches:** `healer-artifacts/healing-queue/patches/P-{test-name}-{YYYYMMDD-HHMMSS}.json` (after MCP propose)
+- **Patches (pending):** `healer-artifacts/healing-queue/patches/P-{test-name}-{YYYYMMDD-HHMMSS}.json` (+ `.md` / `-agent-task.md`) while awaiting propose/review
+- **Patches (done):** heal/skip moves those files to `healing-queue/applied/` or `skipped/` (pending `patches/` stays empty of finished work)
 - **Manifest:** `healer-artifacts/architecture/manifest.json` (run scan before propose/review)
 - **Queue statuses:** `pending_proposal` → `awaiting_agent` → `patch_ready` → `applied` | `skipped` | `deferred` | `not_healable`
 
@@ -18,7 +19,7 @@
 |-------|---------|
 | Bootstrap in a POM repo | `/healing-init` → `python -m healing.init` |
 | Check consumer setup | `healing-doctor` (`--verify-mcp` optional) |
-| Architecture scan | `/architecture-discovery` → `python -m healing.architecture_scan` (also auto on `healing-init` / pytest after package update) |
+| Architecture scan | `/architecture-discovery` → `python -m healing.architecture_scan` (also auto on `healing-init` / pytest after package update; skills + `.env.example` refresh the same way) |
 | Propose patches | `/healing-propose` → `python -m healing.pom_propose --process-all` |
 | MCP propose (SDK) | `python -m healing.mcp_propose_runner --process-all` |
 | Human review | `/healing-review` → `python -m healing.healing_review --list` (auto-imports CI downloads) |
@@ -32,14 +33,14 @@
 See **[docs/CONSUMER_SETUP.md](docs/CONSUMER_SETUP.md)** for full requirements, `healing-init` / `healing-doctor`, CLI reference, and troubleshooting.
 
 ```bash
-pip install "healing[propose] @ git+https://github.com/arunambadikv/self-healing-framework.git"
+pip install "healing @ git+https://github.com/arunambadikv/self-healing-framework.git"
 playwright install chromium
 healing-init
 cp .env.example .env   # set HEALING_LLM_PROVIDER + matching API key for MCP propose only
 healing-doctor
 ```
 
-Skills ship inside the package (`healing/templates/skills/`) and `healing-init` installs them into `.cursor/skills/`. Runtime config/artifacts live under `healer-artifacts/` so they do not collide with the importable `healing` package. `.env` is auto-loaded for MCP propose. See README § Installation.
+Skills ship inside the package (`healing/templates/skills/`) and `healing-init` installs them into `.cursor/skills/`. After `pip install -U` from git, the next pytest / healing-doctor / healing-review refreshes those bundled skills and `.env.example` automatically (`.env` is never overwritten).
 
 ## Playwright MCP setup
 
@@ -55,7 +56,7 @@ For automated MCP propose:
 
 ```bash
 source .venv/bin/activate
-pip install -r requirements.txt   # includes cursor-sdk
+pip install -r requirements.txt   # includes cursor-sdk, openai, mcp
 # HEALING_LLM_PROVIDER + matching API key in .env (loaded automatically)
 ```
 
@@ -89,7 +90,9 @@ python -m healing.pom_propose --process-all
 
 python -m healing.mcp_propose_runner --list
 python -m healing.mcp_propose_runner --process-all
-# → completes P-*.json via Cursor SDK + Playwright MCP (status: patch_ready)
+# → completes P-*.json via LLM provider + Playwright MCP (status: patch_ready)
+#    cursor: Cursor SDK; openai/gemini/groq/litellm: OpenAI-compatible Chat Completions
+#    defaults: composer-2.5 / gpt-4.1 / gemini-3.6-flash / openai/gpt-oss-120b / gpt-4o-mini
 ```
 
 **Single patch:**
@@ -102,14 +105,15 @@ python -m healing.mcp_propose_runner --patch-id P-<id>
 
 ```bash
 export HEALING_MCP_AUTO=1
-# HEALING_LLM_PROVIDER=cursor|openai|anthropic + matching key in .env
+# HEALING_LLM_PROVIDER=cursor|openai|gemini|groq|litellm + matching key in .env
 pytest tests/ -v
 # on healable locator failure at session end → architecture_scan (if stale)
 # → pom_propose (always new stub for this session's failures)
 # → mcp_propose_runner (latest patch first; older duplicate architecture_ref skipped)
 ```
 
-Agent task file per patch: `healer-artifacts/healing-queue/patches/P-<id>-agent-task.md`
+Agent task file per in-flight patch: `healer-artifacts/healing-queue/patches/P-<id>-agent-task.md`.
+After heal/skip it moves to `applied/` or `skipped/` with the json/md — do not leave related files in pending `patches/`.
 
 Use Playwright MCP (`browser_navigate`, `browser_snapshot`) to fill real `architecture_updates` in `P-*.json`. Then promote:
 

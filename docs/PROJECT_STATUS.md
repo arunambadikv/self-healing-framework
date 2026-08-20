@@ -1,19 +1,23 @@
 # Project Status
 
-> **Last updated:** 2026-08-18  
+> **Last updated:** 2026-08-19  
 > **Branch:** `dev`  
 > **Repo:** [arunambadikv/self-healing-framework](https://github.com/arunambadikv/self-healing-framework)
 
 ## Summary
 
-Playwright Python POM healing framework, now **installable** (`pip install -e ".[mcp]"` / git URL) with `/healing-init` for consumer frameworks. Tests use page-object fixtures; locator failures are captured automatically, classified, queued, and repaired through propose → MCP verify → human review → apply. **Human review is required** before any change lands in `pages/*.py` (decision once; agent executes with `--yes`).
+Playwright Python POM healing framework, now **installable** (`pip install -e .` / git URL) with `/healing-init` for consumer frameworks. Tests use page-object fixtures; locator failures are captured automatically, classified, queued, and repaired through propose → MCP verify → human review → apply. **Human review is required** before any change lands in `pages/*.py` (decision once; agent executes with `--yes`).
 
 **Hardening (2026-08):** apply validation allowlist + rollback; patch structure/`before` source checks; packaged `ci_gates_config.yaml` for pip consumers; pinned `@playwright/mcp@0.0.79`; queue `fcntl` lock + atomic index writes; `--json` / `--list-deferred` CLIs; doctor pages/.env checks.
 
 **CI import (2026-08-18):** `healing-import` / auto-merge on `healing-review` copies `gh run download` dirs into `healer-artifacts/` and rewrites runner paths. Playwright browsers pin to `.playwright-browsers/` so Cursor sandbox caches are not used.
+
+**Providers (2026-08-20):** `HEALING_LLM_PROVIDER=cursor|openai|gemini|groq|litellm`. Defaults: `composer-2.5`, `gpt-4.1`, `gemini-3.6-flash`, `openai/gpt-oss-120b`, `gpt-4o-mini`. Cursor SDK, OpenAI, and MCP ship in the core package — consumers only set provider + key in `.env`. `litellm` uses Keyvalue proxy (`https://llm.keyvalue.systems` + `LITE_LLM_KEY`).
+
+**Queue archive (2026-08-19):** heal/skip moves `P-*.json`, `.md`, and `-agent-task.md` out of pending `healing-queue/patches/` into `applied/` or `skipped/`. Review/import sweeps leftovers (including CI re-imports).
 **Target app:** configurable via `HEALING_BASE_URL` (default: OrangeHRM demo login). Opt-in healing demos in `tests/test_orangehrm_healing.py` and `tests/test_saucedemo_healing.py`.
 
-**Current focus:** `dev` has the MCP propose runner and failure-gated `HEALING_MCP_AUTO` chain; merge to `main` via PR when CI is green.
+**Current focus:** `dev` has MCP propose, git-install template refresh (v0.1.2), and failure-gated `HEALING_MCP_AUTO`; merge to `main` via PR when CI is green.
 
 ---
 
@@ -133,9 +137,9 @@ pending_proposal → awaiting_agent → patch_ready → applied | skipped | defe
 | `healer-artifacts/failures/F-{test}-{stamp}.md` | Human-readable failure report |
 | `healer-artifacts/failures/screenshot-F-….png` | Failure screenshot (same id) |
 | `healer-artifacts/healing-queue/index.json` | **Canonical queue status** |
-| `healer-artifacts/healing-queue/patches/P-{test}-{stamp}.json` | Patch proposals |
-| `healer-artifacts/healing-queue/applied/` | Applied patches |
-| `healer-artifacts/healing-queue/skipped/` | Skipped + RCA |
+| `healer-artifacts/healing-queue/patches/P-{test}-{stamp}.json` | **Pending** proposals (+ `.md`, `-agent-task.md`) |
+| `healer-artifacts/healing-queue/applied/` | Applied patches (json/md/agent-task moved out of pending) |
+| `healer-artifacts/healing-queue/skipped/` | Skipped patches + RCA |
 | `healer-artifacts/architecture/manifest.json` | Scanned pages, locators, tests |
 | `healer-artifacts/healing-reports/*.json` | Capture / propose / apply events |
 
@@ -160,7 +164,7 @@ cat healer-artifacts/healing-queue/index.json
 **GitHub Actions** (on push/PR to `main` / `master`):
 
 1. **test** — `pytest`, architecture scan, upload artifacts  
-2. **propose-on-failure** — stub + `mcp_propose_runner` (needs provider secret: `CURSOR_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`)  
+2. **propose-on-failure** — stub + `mcp_propose_runner` (needs provider secret: `CURSOR_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GROQ_API_KEY`)  
 3. **healing-gates** — `python -m healing.ci_gates`
 
 **Open item:** PR `dev` → `main` for commit `cd38e51`.
@@ -194,7 +198,9 @@ pytest tests/test_orangehrm_healing.py::test_orangehrm_broken_login_button --run
 
 | Date | Change |
 |------|--------|
-| 2026-08-12 | Multi-provider propose (`cursor`/`openai`/`anthropic`); CI + consumer git docs |
+| 2026-08-20 | Added `litellm` provider (`LITE_LLM_KEY` → `https://llm.keyvalue.systems`, default `gpt-4o-mini`); OpenAI provider unchanged |
+| 2026-08-19 | v0.1.2: Gemini/Groq defaults, OpenAI-compat propose, archive applied/skipped out of pending `patches/`; pip git updates refresh bundled skills + `.env.example` on next pytest/doctor |
+| 2026-08-18 | Propose providers: `cursor`/`openai`/`gemini`/`groq` (Anthropic removed); SDKs bundled in core package |
 | 2026-08-06 | High/medium hardening: apply security, patch validate, MCP pin, package config, queue lock, DX CLIs |
 | 2026-07-22 | Always create new stubs per failure; MCP/review prefer latest patch (newest-first; one MCP per architecture_ref) |
 | 2026-07-22 | Auto chain scoped to this session's failures + newly created stubs; classifier treats chrome-error/goto as non-healable |

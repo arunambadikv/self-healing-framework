@@ -82,12 +82,30 @@ def test_format_review_card_includes_context(tmp_path: Path, monkeypatch):
     _seed_patch_ready(tmp_path, monkeypatch, patch_id=patch_id, failure_id=failure_id)
     payload = json.loads((QUEUE_PATCHES / f"{patch_id}.json").read_text(encoding="utf-8"))
     card = format_review_card(patch_id, payload, workspace=tmp_path, index=1, total=1)
-    assert "test_green_button" in card
-    assert "DemoPage.green_button" in card
-    assert "PROPOSED FIX" in card
+    assert "Patch summary" in card
+    assert "Patch name" in card
+    assert patch_id in card
+    assert "Why failure happened" in card
+    assert "DemoPage.green_button" in card or "DemoPage.click_green_button" in card
+    assert "Error" in card
+    assert "Screenshot" in card
+    assert "Before" in card
+    assert "After" in card
+    assert 'name="Old"' in card
     assert 'name="Click Me (Green)"' in card
+    assert "Validation (runs on heal)" in card
     assert "pytest tests/test_demo.py::test_green_button -q" in card
-
+    # Fixed section order
+    positions = [card.index(label) for label in (
+        "Patch summary",
+        "Patch name",
+        "Why failure happened",
+        "Error",
+        "Screenshot",
+        "Before",
+        "After",
+    )]
+    assert positions == sorted(positions)
 
 def test_format_patch_list_table(tmp_path: Path, monkeypatch):
     _seed_patch_ready(tmp_path, monkeypatch, patch_id="P-list01", failure_id="F-list01")
@@ -102,6 +120,7 @@ def test_format_menu_high_risk_warning():
     menu = format_menu(high_risk=True)
     assert "HIGH RISK" in menu
     assert "[1] Heal" in menu
+    assert "Select an option, then press Enter to continue" in menu
 
 
 def test_interactive_defer_then_quit(tmp_path: Path, monkeypatch):
@@ -136,7 +155,7 @@ def test_format_review_card_includes_screenshot(tmp_path: Path, monkeypatch):
     failure_path.write_text(json.dumps(failure), encoding="utf-8")
     payload = json.loads((QUEUE_PATCHES / f"{patch_id}.json").read_text(encoding="utf-8"))
     card = format_review_card(patch_id, payload, workspace=tmp_path, index=1, total=1)
-    assert "Screenshot:" in card
+    assert "Screenshot" in card
     assert str(shot.resolve()) in card
 
 

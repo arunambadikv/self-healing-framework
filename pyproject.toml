@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "healing"
-version = "0.1.1"
+version = "0.1.2"
 description = "Playwright POM self-healing: capture, propose, review, and apply locator patches"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,14 +17,17 @@ dependencies = [
   "pyyaml",
   "rich",
   "python-dotenv",
+  "cursor-sdk",
+  "openai",
+  "mcp",
 ]
 
 [project.optional-dependencies]
-mcp = ["cursor-sdk"]
-openai = ["openai", "mcp"]
-anthropic = ["anthropic", "mcp"]
-propose = ["cursor-sdk", "openai", "anthropic", "mcp"]
-dev = ["cursor-sdk", "openai", "anthropic", "mcp"]
+# Kept for older pip install 'healing[propose]' commands; SDKs are now core deps.
+mcp = []
+openai = []
+propose = []
+dev = []
 
 [project.scripts]
 healing-scan = "healing.architecture_scan:main"
