@@ -3,11 +3,11 @@
     "patch_id": "P-test_orangehrm_broken_login_button-20260804-123500",
     "failure_id": "F-test_orangehrm_broken_login_button-20260804-123456",
     "proposal_status": "complete",
-    "architecture_ref": "OrangeHrmLoginPage.healing_demo_login_button",
+    "architecture_ref": "OrangeHrmLoginPage.pomhealer_demo_login_button",
     "architecture_updates": [
       {
         "file": "pages/orangehrm_login_page.py",
-        "symbol": "healing_demo_login_button",
+        "symbol": "pomhealer_demo_login_button",
         "before": "return self.page.get_by_role(\"button\", name=\"Sign In\")",
         "after": "return self.page.get_by_role(\"button\", name=\"Login\")",
         "rationale": "OrangeHRM login CTA accessible name is Login, not Sign In. Verified via Playwright MCP snapshot."

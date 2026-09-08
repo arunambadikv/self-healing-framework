@@ -1,0 +1,2 @@
+class PomhealerError(Exception):
+    pass

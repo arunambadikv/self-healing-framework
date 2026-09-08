@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time checklist: Playwright MCP in Cursor + POM healing paths.
+# One-time checklist: Playwright MCP in Cursor + POM pomhealer paths.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -14,7 +14,7 @@ fi
 
 [[ -f "${ROOT}/.cursor/mcp.json" ]] && echo "OK: .cursor/mcp.json" || echo "WARN: missing .cursor/mcp.json"
 
-mkdir -p healer-artifacts/failures healer-artifacts/healing-queue/patches healer-artifacts/architecture
+mkdir -p pomhealer-artifacts/failures pomhealer-artifacts/pomhealer-queue/patches pomhealer-artifacts/architecture
 echo "OK: artifact directories"
 
 cat <<'EOF'
@@ -27,17 +27,17 @@ cat <<'EOF'
    args: ["@playwright/mcp@0.0.79"]
 3. Confirm MCP connected in the panel.
 
---- POM healing workflow ---
+--- POM pomhealer workflow ---
 
   pytest tests/ -v
-  python -m healing.architecture_scan
-  python -m healing.pom_propose --process-all
-  python -m healing.mcp_propose_runner --process-all   # needs HEALING_LLM_PROVIDER + key
-  # Completed P-* files live in healer-artifacts/healing-queue/patches/ until review
-  python -m healing.healing_review --list
-  python -m healing.healing_review --patch P-<id> --decision heal
+  python -m pomhealer.architecture_scan
+  python -m pomhealer.pom_propose --process-all
+  python -m pomhealer.mcp_propose_runner --process-all   # needs POMHEALER_LLM_PROVIDER + key
+  # Completed P-* files live in pomhealer-artifacts/pomhealer-queue/patches/ until review
+  python -m pomhealer.review --list
+  python -m pomhealer.review --patch P-<id> --decision heal
   # After heal/skip, json/md/agent-task move to applied/ or skipped/
 
-See AGENTS.md for slash skills: /architecture-discovery, /healing-propose, /healing-review
+See AGENTS.md for slash skills: /architecture-discovery, /pomhealer-propose, /pomhealer-review
 
 EOF

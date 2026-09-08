@@ -45,25 +45,25 @@
     {
       "index": 3,
       "page_class": "OrangeHrmLoginPage",
-      "method": "click_healing_demo_login",
+      "method": "click_pomhealer_demo_login",
       "action": "click",
-      "locator_id": "healing_demo_login_button",
-      "locator_summary": "healing_demo_login_button"
+      "locator_id": "pomhealer_demo_login_button",
+      "locator_summary": "pomhealer_demo_login_button"
     }
   ],
   "failing_step": {
     "index": 3,
     "page_class": "OrangeHrmLoginPage",
-    "method": "click_healing_demo_login",
+    "method": "click_pomhealer_demo_login",
     "action": "click",
-    "locator_id": "healing_demo_login_button",
-    "locator_summary": "healing_demo_login_button"
+    "locator_id": "pomhealer_demo_login_button",
+    "locator_summary": "pomhealer_demo_login_button"
   },
-  "architecture_ref": "OrangeHrmLoginPage.healing_demo_login_button",
+  "architecture_ref": "OrangeHrmLoginPage.pomhealer_demo_login_button",
   "classification": "selector_break",
   "healable": true,
   "artifacts": {
-    "screenshot": "healer-artifacts/failures/screenshot-F-test_orangehrm_broken_login_button-20260804-123456.png",
-    "storage_state": "healer-artifacts/failures/storage-state-F-test_orangehrm_broken_login_button-20260804-123456.json"
+    "screenshot": "pomhealer-artifacts/failures/screenshot-F-test_orangehrm_broken_login_button-20260804-123456.png",
+    "storage_state": "pomhealer-artifacts/failures/storage-state-F-test_orangehrm_broken_login_button-20260804-123456.json"
   }
 }

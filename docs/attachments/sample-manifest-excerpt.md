@@ -12,11 +12,11 @@
 - `username_input` (line 18): `self.page.get_by_role("textbox", name="Username")`
 - `password_input` (line 22): `self.page.get_by_role("textbox", name="Password")`
 - `login_button` (line 26): `self.page.get_by_role("button", name="Login")`
-- `healing_demo_login_button` (line 30): `self.page.get_by_role("button", name="Sign In")` ← demo break
+- `pomhealer_demo_login_button` (line 30): `self.page.get_by_role("button", name="Sign In")` ← demo break
 
 **Methods:**
 
 - `fill_username` → username_input
 - `fill_password` → password_input
 - `click_login` → login_button
-- `click_healing_demo_login` → healing_demo_login_button
+- `click_pomhealer_demo_login` → pomhealer_demo_login_button

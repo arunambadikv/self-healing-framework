@@ -1,13 +1,13 @@
-# Consumer CI — healing propose on failure
+# Consumer CI — pomhealer propose on failure
 
-Minimal GitHub Actions pattern for a POM repo that installs healing from git.
+Minimal GitHub Actions pattern for a POM repo that installs pomhealer from git.
 
 ## Secrets / vars
 
 | Name | Type | Purpose |
 |------|------|---------|
-| `HEALING_LLM_PROVIDER` | Repository **variable** (optional) | `cursor` (default), `openai`, `gemini`, `groq`, or `litellm` |
-| `HEALING_LLM_MODEL` | Variable (optional) | Override default (`composer-2.5` / `gpt-4.1` / `gemini-3.6-flash` / `openai/gpt-oss-120b` / `gpt-4o-mini`) |
+| `POMHEALER_LLM_PROVIDER` | Repository **variable** (optional) | `cursor` (default), `openai`, `gemini`, `groq`, or `litellm` |
+| `POMHEALER_LLM_MODEL` | Variable (optional) | Override default (`composer-2.5` / `gpt-4.1` / `gemini-3.6-flash` / `openai/gpt-oss-120b` / `gpt-4o-mini`) |
 | `CURSOR_API_KEY` | Secret | When provider=`cursor` |
 | `OPENAI_API_KEY` | Secret | When provider=`openai` |
 | `GEMINI_API_KEY` | Secret | When provider=`gemini` |
@@ -17,7 +17,7 @@ Minimal GitHub Actions pattern for a POM repo that installs healing from git.
 ## Workflow sketch
 
 ```yaml
-name: Tests + healing propose
+name: Tests + pomhealer propose
 
 on:
   push:
@@ -32,21 +32,21 @@ jobs:
         with:
           python-version: "3.12"
       - run: |
-          pip install "healing @ git+https://github.com/arunambadikv/self-healing-framework.git"
+          pip install "pomhealer @ git+https://github.com/arunambadikv/self-healing-framework.git"
           playwright install chromium
           # optional in-job auto chain (needs matching secret):
-          # echo "HEALING_MCP_AUTO=1" >> "$GITHUB_ENV"
+          # echo "POMHEALER_MCP_AUTO=1" >> "$GITHUB_ENV"
       - run: pytest tests/ -q
         id: pytest
         continue-on-error: true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: healing-artifacts
+          name: pomhealer-artifacts
           path: |
-            healer-artifacts/failures/
-            healer-artifacts/healing-queue/
-            healer-artifacts/architecture/
+            pomhealer-artifacts/failures/
+            pomhealer-artifacts/pomhealer-queue/
+            pomhealer-artifacts/architecture/
           if-no-files-found: ignore
       - if: steps.pytest.outcome == 'failure'
         run: exit 1
@@ -56,7 +56,7 @@ jobs:
     if: failure()
     runs-on: ubuntu-latest
     env:
-      HEALING_LLM_PROVIDER: ${{ vars.HEALING_LLM_PROVIDER || 'cursor' }}
+      POMHEALER_LLM_PROVIDER: ${{ vars.POMHEALER_LLM_PROVIDER || 'cursor' }}
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -72,16 +72,16 @@ jobs:
           node-version: "20"
       - uses: actions/download-artifact@v4
         with:
-          name: healing-artifacts
+          name: pomhealer-artifacts
           path: .
       - run: |
-          pip install "healing @ git+https://github.com/arunambadikv/self-healing-framework.git"
+          pip install "pomhealer @ git+https://github.com/arunambadikv/self-healing-framework.git"
           playwright install chromium
-      - run: python -m healing.pom_propose --process-all
-      - run: python -m healing.mcp_propose_runner --process-all
+      - run: python -m pomhealer.pom_propose --process-all
+      - run: python -m pomhealer.mcp_propose_runner --process-all
       - run: |
-          python -m healing.healing_review --promote-all || true
-          python -m healing.healing_review --list --json
+          python -m pomhealer.review --promote-all || true
+          python -m pomhealer.review --list --json
         if: always()
 ```
 
@@ -89,8 +89,8 @@ Human review/apply stays local:
 
 ```bash
 gh run download
-healing-review --interactive    # auto-merges into healer-artifacts/
-# or: healing-import && healing-review --list
+pomhealer-review --interactive    # auto-merges into pomhealer-artifacts/
+# or: pomhealer-import && pomhealer-review --list
 ```
 
 See also [CONSUMER_SETUP.md](CONSUMER_SETUP.md).

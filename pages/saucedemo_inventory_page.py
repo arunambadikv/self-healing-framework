@@ -19,7 +19,7 @@ class SauceDemoInventoryPage(BasePage):
         return self.page.get_by_role("button", name="Add to cart").first
 
     @property
-    def healing_demo_add_backpack(self) -> Locator:
+    def pomhealer_demo_add_backpack(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
         return self.page.get_by_role("button", name="Add Backpack")
 
@@ -33,11 +33,11 @@ class SauceDemoInventoryPage(BasePage):
     def click_add_backpack(self) -> None:
         self._click_locator("click_add_backpack", "add_backpack_button", self.add_backpack_button)
 
-    def click_healing_demo_add_backpack(self) -> None:
+    def click_pomhealer_demo_add_backpack(self) -> None:
         self._click_locator(
-            "click_healing_demo_add_backpack",
-            "healing_demo_add_backpack",
-            self.healing_demo_add_backpack,
+            "click_pomhealer_demo_add_backpack",
+            "pomhealer_demo_add_backpack",
+            self.pomhealer_demo_add_backpack,
         )
 
     def open_cart(self) -> None:

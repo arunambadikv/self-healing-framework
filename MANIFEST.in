@@ -1,2 +1,2 @@
-recursive-include healing/templates *
-include healing/ci_gates_config.yaml
+recursive-include pomhealer/templates *
+include pomhealer/ci_gates_config.yaml

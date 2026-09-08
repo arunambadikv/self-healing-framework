@@ -21,7 +21,7 @@
           "kind": "property",
           "expression": "self.page.get_by_role(\"button\", name=\"Login\")"
         },
-        "healing_demo_login_button": {
+        "pomhealer_demo_login_button": {
           "line": 30,
           "kind": "property",
           "expression": "self.page.get_by_role(\"button\", name=\"Sign In\")"
@@ -31,9 +31,9 @@
         "fill_username": { "line": 43, "locator_deps": ["username_input"] },
         "fill_password": { "line": 46, "locator_deps": ["password_input"] },
         "click_login": { "line": 57, "locator_deps": ["login_button"] },
-        "click_healing_demo_login": {
+        "click_pomhealer_demo_login": {
           "line": 60,
-          "locator_deps": ["healing_demo_login_button"]
+          "locator_deps": ["pomhealer_demo_login_button"]
         }
       }
     }

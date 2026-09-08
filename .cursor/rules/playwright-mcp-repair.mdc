@@ -1,19 +1,19 @@
 ---
-description: Use Playwright MCP to repair Page Object locators in pages/*.py from failure reports and healing-queue patches.
+description: Use Playwright MCP to repair Page Object locators in pages/*.py from failure reports and pomhealer-queue patches.
 globs:
   - pages/**
-  - artifacts/failures/**
-  - artifacts/healing-queue/**
-  - artifacts/architecture/**
+  - pomhealer-artifacts/failures/**
+  - pomhealer-artifacts/pomhealer-queue/**
+  - pomhealer-artifacts/architecture/**
 alwaysApply: false
 ---
 
 # Playwright MCP Locator Repair (POM)
 
 1. Use the connected **Playwright MCP** server.
-2. Read failure: `artifacts/failures/F-<id>.md`
+2. Read failure: `pomhealer-artifacts/failures/F-<id>.md`
 3. Follow **`.cursor/skills/playwright-locator-repair/SKILL.md`** for diagnosis and proposal JSON.
-4. Human apply: **`.cursor/skills/healing-review/SKILL.md`** + `python -m healing.healing_review --patch P-<id> --decision heal`
+4. Human apply: **`.cursor/skills/pomhealer-review/SKILL.md`** + `python -m pomhealer.review --patch P-<id> --decision heal`
 
 ## MCP sequence
 
@@ -23,5 +23,5 @@ alwaysApply: false
 ## Rules
 
 - Update **`pages/*.py`** only when proposing or applying.
-- Write `artifacts/healing-queue/patches/P-<id>.json` with `architecture_updates[]`.
+- Write `pomhealer-artifacts/pomhealer-queue/patches/P-<id>.json` with `architecture_updates[]`.
 - Do not weaken assertions or skip tests.

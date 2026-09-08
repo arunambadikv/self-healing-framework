@@ -1,0 +1,10 @@
+# Canonical project config (written to pomhealer-artifacts/pomhealer.toml by pomhealer-init).
+# Prefer this path over a root pomhealer.toml; [tool.pomhealer] in pyproject.toml also works.
+pages_dir = "pages"
+tests_dir = "tests"
+data_dir = "data"
+artifacts_dir = "pomhealer-artifacts"
+apply_roots = ["pages"]
+skills_dir = ".cursor/skills"
+mcp_config = ".cursor/mcp.json"
+auth_dir = "pomhealer-artifacts/auth"

@@ -15,13 +15,17 @@ test-results/
 playwright-report/
 playwright/.cache/
 
-# Generated healing outputs (keep healer-artifacts/healing.toml tracked)
-healer-artifacts/failures/
-healer-artifacts/healing-queue/
-healer-artifacts/architecture/
-healer-artifacts/healing-reports/
-healer-artifacts/auth/
-# Legacy layouts
+# Generated pomhealer outputs (keep pomhealer-artifacts/pomhealer.toml tracked)
+pomhealer-artifacts/failures/
+pomhealer-artifacts/pomhealer-queue/
+pomhealer-artifacts/architecture/
+pomhealer-artifacts/pomhealer-reports/
+pomhealer-artifacts/auth/
+# Legacy layouts (pre-pomhealer rebrand)
+healer-artifacts/
+healing-artifacts/
+healing-pipeline-e2e/
+architecture-manifest/
 healer/
 artifacts/
 

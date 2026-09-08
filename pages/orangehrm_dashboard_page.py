@@ -17,14 +17,14 @@ class OrangeHrmDashboardPage(BasePage):
         return self.page.get_by_role("heading", name="Dashboard")
 
     @property
-    def healing_demo_dashboard_heading(self) -> Locator:
+    def pomhealer_demo_dashboard_heading(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
-        return self.page.get_by_role("heading", name="Dashboard")
+        return self.page.get_by_role("heading", name="Home")
 
     @property
-    def healing_demo_pim_link(self) -> Locator:
+    def pomhealer_demo_pim_link(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
-        return self.page.get_by_role("link", name="PIM")
+        return self.page.get_by_role("link", name="Employee List")
 
     def ready_locator(self) -> Locator:
         return self.dashboard_heading
@@ -36,16 +36,16 @@ class OrangeHrmDashboardPage(BasePage):
             self.dashboard_heading,
         )
 
-    def expect_healing_demo_dashboard_visible(self) -> None:
+    def expect_pomhealer_demo_dashboard_visible(self) -> None:
         self._expect_visible(
-            "expect_healing_demo_dashboard_visible",
-            "healing_demo_dashboard_heading",
-            self.healing_demo_dashboard_heading,
+            "expect_pomhealer_demo_dashboard_visible",
+            "pomhealer_demo_dashboard_heading",
+            self.pomhealer_demo_dashboard_heading,
         )
 
-    def click_healing_demo_pim(self) -> None:
+    def click_pomhealer_demo_pim(self) -> None:
         self._click_locator(
-            "click_healing_demo_pim",
-            "healing_demo_pim_link",
-            self.healing_demo_pim_link,
+            "click_pomhealer_demo_pim",
+            "pomhealer_demo_pim_link",
+            self.pomhealer_demo_pim_link,
         )

@@ -25,7 +25,7 @@ from pages.saucedemo_login_page import (
 
 
 def _demo_headless() -> bool:
-    return os.environ.get("HEALING_DEMO_HEADLESS", "").strip().lower() in {
+    return os.environ.get("POMHEALER_DEMO_HEADLESS", "").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -42,7 +42,7 @@ def _env_cred(user_key: str, password_key: str, default_user: str, default_passw
 
 @pytest.fixture(scope="session")
 def base_url():
-    return os.environ.get("HEALING_BASE_URL", ORANGEHRM_LOGIN_URL)
+    return os.environ.get("POMHEALER_BASE_URL", ORANGEHRM_LOGIN_URL)
 
 
 @pytest.fixture(scope="session")
@@ -57,12 +57,12 @@ def saucedemo_credentials() -> tuple[str, str]:
 
 @pytest.fixture(scope="session")
 def browser_type_launch_args(pytestconfig, browser_type_launch_args):
-    """Show the browser when running healing demos (unless HEALING_DEMO_HEADLESS=1)."""
-    if not pytestconfig.getoption("--run-healing-demo"):
+    """Show the browser when running healing demos (unless POMHEALER_DEMO_HEADLESS=1)."""
+    if not pytestconfig.getoption("--run-pomhealer-demo"):
         return browser_type_launch_args
     if _demo_headless():
         return {**browser_type_launch_args, "headless": True}
-    slow_mo = int(os.environ.get("HEALING_DEMO_SLOW_MO", "400"))
+    slow_mo = int(os.environ.get("POMHEALER_DEMO_SLOW_MO", "400"))
     return {
         **browser_type_launch_args,
         "headless": False,
@@ -72,7 +72,7 @@ def browser_type_launch_args(pytestconfig, browser_type_launch_args):
 
 @pytest.fixture(scope="session")
 def browser_context_args(pytestconfig, browser_context_args):
-    if not pytestconfig.getoption("--run-healing-demo"):
+    if not pytestconfig.getoption("--run-pomhealer-demo"):
         return browser_context_args
     return {
         **browser_context_args,
@@ -81,12 +81,12 @@ def browser_context_args(pytestconfig, browser_context_args):
 
 
 @pytest.fixture(autouse=True)
-def _healing_demo_timeouts(request):
+def _pomhealer_demo_timeouts(request):
     """Give public demo sites more time to load when running healing demos."""
-    if not request.config.getoption("--run-healing-demo"):
+    if not request.config.getoption("--run-pomhealer-demo"):
         yield
         return
-    from healing.timeouts import ACTION_TIMEOUT_MS, NAV_TIMEOUT_MS
+    from pomhealer.timeouts import ACTION_TIMEOUT_MS, NAV_TIMEOUT_MS
 
     context = request.getfixturevalue("context")
     context.set_default_timeout(ACTION_TIMEOUT_MS)
@@ -117,7 +117,7 @@ def saucedemo_inventory(page: Page) -> SauceDemoInventoryPage:
 @pytest.fixture(scope="session")
 def orangehrm_storage_state(browser, base_url, orangehrm_credentials) -> Path:
     """Login once; save storage state for authenticated healing / MCP restore."""
-    from healing.paths import AUTH_DIR, ensure_queue_dirs
+    from pomhealer.paths import AUTH_DIR, ensure_queue_dirs
 
     ensure_queue_dirs()
     path = AUTH_DIR.resolve_path() / "storage-state-orangehrm.json"
@@ -135,7 +135,7 @@ def orangehrm_storage_state(browser, base_url, orangehrm_credentials) -> Path:
 
 @pytest.fixture(scope="session")
 def saucedemo_storage_state(browser, saucedemo_credentials) -> Path:
-    from healing.paths import AUTH_DIR, ensure_queue_dirs
+    from pomhealer.paths import AUTH_DIR, ensure_queue_dirs
 
     ensure_queue_dirs()
     path = AUTH_DIR.resolve_path() / "storage-state-saucedemo.json"

@@ -1,0 +1,33 @@
+# CI gate thresholds for POM pomhealer pipeline.
+
+thresholds:
+  ignore_report_globs:
+    - "missing-key-smoke.json"
+    - "*-smoke.json"
+    - "test_demo_total_failure.json"
+  max_failed_events: 0
+  max_healed_ratio_warn: 0.10
+  max_healed_ratio_fail: 1.0
+  min_events_for_ratio: 1
+  repeat_healed_key_warn: 2
+  max_unprocessed_failures: 0
+  max_patch_ready_without_review: 10
+  max_awaiting_agent: 5
+
+architecture:
+  require_manifest: true
+
+test_policy:
+  enabled: true
+  raw_mode: error
+  require_pom_usage: true
+  allowlist:
+    - tests/test_pomhealer_unit.py
+    - tests/test_pomhealer_review_interactive.py
+  forbidden_patterns:
+    - 'page\.locator\('
+    - 'page\.get_by_[a-z_]+\('
+    - 'expect\(page\.'
+
+pomhealer_mcp:
+  auto_after_test: false

@@ -1,0 +1,188 @@
+name: Healing Framework CI
+
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+    branches: [main, master, dev]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e .
+          playwright install chromium
+
+      - name: Run pytest
+        id: pytest
+        run: pytest tests/ -q
+        continue-on-error: true
+
+      - name: Architecture manifest
+        run: python -m pomhealer.architecture_scan
+
+      - name: Upload healing artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: healing-artifacts
+          path: |
+            pomhealer-artifacts/failures/
+            pomhealer-artifacts/pomhealer-queue/
+            pomhealer-artifacts/architecture/
+            pomhealer-artifacts/pomhealer-reports/
+          if-no-files-found: ignore
+
+      - name: Fail if pytest failed
+        if: steps.pytest.outcome == 'failure'
+        run: exit 1
+
+  propose-on-failure:
+    needs: test
+    if: failure() && needs.test.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download healing artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: healing-artifacts
+          path: .
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e .
+          playwright install chromium
+
+      - name: Create stub patches
+        run: python -m pomhealer.pom_propose --process-all
+
+      - name: Require LLM API key for selected provider
+        env:
+          POMHEALER_LLM_PROVIDER: ${{ vars.POMHEALER_LLM_PROVIDER || 'cursor' }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          LITE_LLM_KEY: ${{ secrets.LITE_LLM_KEY }}
+        run: |
+          python - <<'PY'
+          import os, sys
+          from pomhealer.llm_config import resolve_llm_config, missing_key_message
+          cfg = resolve_llm_config()
+          if not cfg.has_key:
+              print(missing_key_message(cfg), file=sys.stderr)
+              print(
+                  f"::error::Set secret {cfg.key_env} (and optionally vars.POMHEALER_LLM_PROVIDER) "
+                  f"for provider={cfg.provider}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          print(f"ok provider={cfg.provider} model={cfg.model} key={cfg.key_env}")
+          PY
+
+      - name: Complete patches via LLM + Playwright MCP
+        env:
+          POMHEALER_LLM_PROVIDER: ${{ vars.POMHEALER_LLM_PROVIDER || 'cursor' }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          LITE_LLM_KEY: ${{ secrets.LITE_LLM_KEY }}
+          POMHEALER_LLM_MODEL: ${{ vars.POMHEALER_LLM_MODEL || '' }}
+        run: python -m pomhealer.mcp_propose_runner --process-all
+
+      - name: Summarize patches for review
+        if: always()
+        run: |
+          echo "## Healing patches awaiting review" >> "$GITHUB_STEP_SUMMARY"
+          python -m pomhealer.review --promote-all >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          python -m pomhealer.review --list --json >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          import json, subprocess
+          raw = subprocess.check_output(
+              ["python", "-m", "pomhealer.review", "--list", "--json"],
+              text=True,
+          )
+          data = json.loads(raw)
+          for entry in data.get("entries") or []:
+              pid = entry.get("patch_id")
+              if not pid:
+                  continue
+              print(f"\n### {pid}\n")
+              subprocess.run(
+                  ["python", "-m", "pomhealer.review", "--show", pid],
+                  check=False,
+              )
+          PY
+
+      - name: Upload updated healing artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: healing-artifacts-post-propose
+          path: |
+            pomhealer-artifacts/failures/
+            pomhealer-artifacts/pomhealer-queue/
+            pomhealer-artifacts/architecture/
+            pomhealer-artifacts/pomhealer-reports/
+          if-no-files-found: ignore
+
+  pomhealer-gates:
+    needs: [test, propose-on-failure]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e .
+
+      - name: Download post-propose artifacts
+        if: needs.propose-on-failure.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: healing-artifacts-post-propose
+          path: .
+
+      - name: Download test artifacts
+        if: needs.propose-on-failure.result != 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: healing-artifacts
+          path: .
+
+      - name: Refresh architecture manifest
+        run: python -m pomhealer.architecture_scan
+
+      - name: CI gates (policy + healing queue)
+        run: python -m pomhealer.ci_gates
+
+      - name: Fail if pytest failed
+        if: needs.test.result == 'failure'
+        run: exit 1

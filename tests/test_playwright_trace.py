@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from healing.playwright_trace import (
+from pomhealer.playwright_trace import (
     StackFrameInfo,
     attribute_from_frames,
     install_playwright_tracing,
@@ -14,7 +14,7 @@ from healing.playwright_trace import (
     suppress_auto_trace,
     uninstall_playwright_tracing,
 )
-from healing.step_trace import (
+from pomhealer.step_trace import (
     StepTraceCollector,
     get_active_step_trace,
     record_step,
@@ -31,7 +31,7 @@ def test_module_stem_to_page_class():
 def test_attribute_from_frames_pages_method():
     frames = [
         StackFrameInfo(
-            filename="/repo/healing/playwright_trace.py",
+            filename="/repo/pomhealer/playwright_trace.py",
             function="_auto_record",
             locals={},
         ),
@@ -50,12 +50,12 @@ def test_attribute_from_frames_pages_method():
 def test_attribute_from_frames_harvests_base_page_locator_id():
     frames = [
         StackFrameInfo(
-            filename="/repo/healing/playwright_trace.py",
+            filename="/repo/pomhealer/playwright_trace.py",
             function="wrapped",
             locals={},
         ),
         StackFrameInfo(
-            filename="/repo/healing/base_page.py",
+            filename="/repo/pomhealer/base_page.py",
             function="_click_locator",
             locals={"locator_id": "login_button", "method": "click_login"},
         ),
@@ -86,7 +86,7 @@ def test_attribute_from_frames_unknown_without_pages():
 
 def _noop_playwright_originals() -> None:
     """Replace stored Playwright originals so unit tests never hit a real browser."""
-    import healing.playwright_trace as pt
+    import pomhealer.playwright_trace as pt
 
     for key in list(pt._originals):
         pt._originals[key] = lambda self, *args, **kwargs: None

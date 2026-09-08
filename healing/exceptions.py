@@ -1,2 +1,0 @@
-class HealingError(Exception):
-    pass

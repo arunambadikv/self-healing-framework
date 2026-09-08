@@ -35,7 +35,7 @@ class DemoPage(BasePage):
         return self.page.get_by_role("button", name="Click Me (Green)")
 
     @property
-    def healing_demo_green_button(self) -> Locator:
+    def pomhealer_demo_green_button(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
         return self.page.get_by_role("button", name="Click Me (Green)")
 
@@ -154,11 +154,11 @@ class DemoPage(BasePage):
     def click_green_button(self) -> None:
         self._click_locator("click_green_button", "green_button", self.green_button)
 
-    def click_healing_demo_green_button(self) -> None:
+    def click_pomhealer_demo_green_button(self) -> None:
         self._click_locator(
-            "click_healing_demo_green_button",
-            "healing_demo_green_button",
-            self.healing_demo_green_button,
+            "click_pomhealer_demo_green_button",
+            "pomhealer_demo_green_button",
+            self.pomhealer_demo_green_button,
         )
 
     def expect_paragraph_text_visible(self) -> None:

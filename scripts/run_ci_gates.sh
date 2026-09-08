@@ -9,8 +9,8 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 
 echo "== Architecture manifest =="
-"$PYTHON" -m healing.architecture_scan
+"$PYTHON" -m pomhealer.architecture_scan
 
 echo ""
 echo "== CI gates (POM policy + healing queue) =="
-"$PYTHON" -m healing.ci_gates "$@"
+"$PYTHON" -m pomhealer.ci_gates "$@"

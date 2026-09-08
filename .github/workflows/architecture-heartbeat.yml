@@ -23,24 +23,24 @@ jobs:
           playwright install chromium
 
       - name: Architecture scan
-        run: python -m healing.architecture_scan
+        run: python -m pomhealer.architecture_scan
 
       - name: Upload architecture artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: architecture-manifest
-          path: healer-artifacts/architecture/
+          path: pomhealer-artifacts/architecture/
           if-no-files-found: warn
 
       - name: Summarize
         if: always()
         run: |
-          if [ -f healer-artifacts/architecture/manifest.json ]; then
+          if [ -f pomhealer-artifacts/architecture/manifest.json ]; then
             python - <<'PY'
           import json
           from pathlib import Path
-          m = json.loads(Path("healer-artifacts/architecture/manifest.json").read_text())
+          m = json.loads(Path("pomhealer-artifacts/architecture/manifest.json").read_text())
           print(f"content_hash={m.get('content_hash')} generated_at={m.get('generated_at')} pages={len(m.get('pages') or {})}")
           PY
           else

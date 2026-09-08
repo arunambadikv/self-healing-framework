@@ -1,6 +1,6 @@
 # Architecture discovery heartbeat
 
-Keeps `healer-artifacts/architecture/manifest.json` fresh even when no PR is open.
+Keeps `pomhealer-artifacts/architecture/manifest.json` fresh even when no PR is open.
 
 ## GitHub Actions (repo)
 
@@ -19,7 +19,7 @@ Create a **daily** Cursor Automation with:
 |-------|--------|
 | Name | Architecture discovery heartbeat |
 | Trigger | Schedule — once per day |
-| Instructions | Run `python -m healing.architecture_scan` from the repo root. Read `healer-artifacts/architecture/manifest.json`. Report whether `content_hash` changed. Do not edit `pages/` or `tests/`. |
+| Instructions | Run `python -m pomhealer.architecture_scan` from the repo root. Read `pomhealer-artifacts/architecture/manifest.json`. Report whether `content_hash` changed. Do not edit `pages/` or `tests/`. |
 | Tools | Shell / terminal only (no Playwright MCP required) |
 
 Finish creation in the Cursor Automations editor (Agents Window → Automations). Prefer linking the automation to this repository’s `dev` or default working branch.
@@ -27,6 +27,6 @@ Finish creation in the Cursor Automations editor (Agents Window → Automations)
 ## On-demand
 
 ```bash
-python -m healing.architecture_scan
+python -m pomhealer.architecture_scan
 # or Cursor: /architecture-discovery
 ```

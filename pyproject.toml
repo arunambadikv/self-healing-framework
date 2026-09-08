@@ -3,8 +3,8 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "healing"
-version = "0.1.2"
+name = "pomhealer"
+version = "0.2.0"
 description = "Playwright POM self-healing: capture, propose, review, and apply locator patches"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,43 +23,43 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Kept for older pip install 'healing[propose]' commands; SDKs are now core deps.
+# Kept for older pip install 'pomhealer[propose]' commands; SDKs are now core deps.
 mcp = []
 openai = []
 propose = []
 dev = []
 
 [project.scripts]
-healing-scan = "healing.architecture_scan:main"
-healing-propose = "healing.pom_propose:main"
-healing-mcp-propose = "healing.mcp_propose_runner:main"
-healing-review = "healing.healing_review:main"
-healing-import = "healing.artifact_import:main"
-healing-gates = "healing.ci_gates:main"
-healing-init = "healing.init:main"
-healing-doctor = "healing.doctor:main"
+pomhealer-scan = "pomhealer.architecture_scan:main"
+pomhealer-propose = "pomhealer.pom_propose:main"
+pomhealer-mcp-propose = "pomhealer.mcp_propose_runner:main"
+pomhealer-review = "pomhealer.review:main"
+pomhealer-import = "pomhealer.artifact_import:main"
+pomhealer-gates = "pomhealer.ci_gates:main"
+pomhealer-init = "pomhealer.init:main"
+pomhealer-doctor = "pomhealer.doctor:main"
 
 [project.entry-points."pytest11"]
-healing = "healing.pytest_plugin"
+pomhealer = "pomhealer.pytest_plugin"
 
 [tool.setuptools.packages.find]
-include = ["healing*"]
+include = ["pomhealer*"]
 
 [tool.setuptools.package-data]
-healing = [
+pomhealer = [
   "templates/**/*",
   "ci_gates_config.yaml",
 ]
 
-[tool.healing]
+[tool.pomhealer]
 pages_dir = "pages"
 tests_dir = "tests"
 data_dir = "data"
-artifacts_dir = "healer-artifacts"
+artifacts_dir = "pomhealer-artifacts"
 apply_roots = ["pages"]
 skills_dir = ".cursor/skills"
 mcp_config = ".cursor/mcp.json"
-auth_dir = "healer-artifacts/auth"
+auth_dir = "pomhealer-artifacts/auth"
 
 [tool.pytest.ini_options]
 addopts = "-q"
@@ -68,5 +68,5 @@ pythonpath = ["."]
 markers = [
   "optional: mark test as optional",
   "demo_session: team demo only; skipped unless pytest --run-demo-session",
-  "healing_demo: healing pipeline demo; skipped unless pytest --run-healing-demo",
+  "pomhealer_demo: healing pipeline demo; skipped unless pytest --run-pomhealer-demo",
 ]

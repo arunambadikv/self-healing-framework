@@ -25,7 +25,7 @@ class SauceDemoLoginPage(BasePage):
         return self.page.get_by_role("button", name="Login")
 
     @property
-    def healing_demo_login_button(self) -> Locator:
+    def pomhealer_demo_login_button(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
         return self.page.get_by_role("button", name="Sign In")
 
@@ -42,11 +42,11 @@ class SauceDemoLoginPage(BasePage):
     def click_login(self) -> None:
         self._click_locator("click_login", "login_button", self.login_button)
 
-    def click_healing_demo_login(self) -> None:
+    def click_pomhealer_demo_login(self) -> None:
         self._click_locator(
-            "click_healing_demo_login",
-            "healing_demo_login_button",
-            self.healing_demo_login_button,
+            "click_pomhealer_demo_login",
+            "pomhealer_demo_login_button",
+            self.pomhealer_demo_login_button,
         )
 
     def login(self, username: str, password: str) -> None:

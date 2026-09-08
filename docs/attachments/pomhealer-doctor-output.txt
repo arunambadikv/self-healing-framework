@@ -1,0 +1,18 @@
+Healing doctor
+
+  [OK  ] pomhealer package: importable (.../pomhealer/__init__.py)
+  [OK  ] pytest plugin: pytest11 entry pomhealer → pomhealer.pytest_plugin
+  [OK  ] cursor-sdk: installed (MCP propose ready)
+  [OK  ] chromium: executable at .../ms-playwright/chromium-*/chrome
+  [OK  ] npx (Node): .../bin/npx
+  [OK  ] mcp.json: .cursor/mcp.json
+  [OK  ] LLM API key: set (env or .env)
+  [OK  ] pomhealer.toml: pomhealer-artifacts/pomhealer.toml
+  [OK  ] artifact dirs: pomhealer-artifacts/ (failures present)
+  [OK  ] skills: 5 skills via workspace .cursor/skills
+
+Summary: 0 error(s), 0 warning(s)
+Note: Cursor Settings → MCP is only for interactive IDE use.
+      CLI mcp_propose_runner starts Playwright MCP via stdio on its own.
+Note: architecture-discovery and Cursor skills refresh automatically on the next
+      pytest (or pomhealer-doctor) after a package install/update from git.
