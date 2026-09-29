@@ -29,7 +29,7 @@ class OrangeHrmLoginPage(BasePage):
     @property
     def pomhealer_demo_login_button(self) -> Locator:
         """Healing demo: intentionally broken until MCP repair."""
-        return self.page.get_by_role("button", name="Login")
+        return self.page.get_by_role("button", name="Sign In")
 
     @property
     def pomhealer_demo_username_input(self) -> Locator:

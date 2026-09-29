@@ -22,6 +22,7 @@
 | Architecture scan | `/architecture-discovery` → `python -m pomhealer.architecture_scan` (also auto on `pomhealer-init` / pytest after package update; skills + `.env.example` refresh the same way) |
 | Propose patches | `/pomhealer-propose` → `python -m pomhealer.pom_propose --process-all` |
 | MCP propose (SDK) | `python -m pomhealer.mcp_propose_runner --process-all` |
+| Run named test | `/run-test` → `.venv/bin/python -m pytest <node> [-v]` (+ `--run-pomhealer-demo` when needed) |
 | Human review | `/pomhealer-review` → `python -m pomhealer.review --list` (auto-imports CI downloads) |
 | Import CI artifacts | `pomhealer-import` (`python -m pomhealer.artifact_import`) |
 | Locator repair (MCP + proposals) | `/playwright-locator-repair` |

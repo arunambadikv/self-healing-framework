@@ -126,6 +126,7 @@ pending_proposal → awaiting_agent → patch_ready → applied | skipped | defe
 | `/architecture-discovery` | Refresh architecture manifest (also daily heartbeat) |
 | `/pomhealer-init` | Bootstrap pomhealer in a consumer POM repo |
 | `/pomhealer-propose` | Turn failures into patch proposals |
+| `/run-test` | Run a named pytest with venv / `.env` / browser path bootstrap |
 | `/playwright-locator-repair` | MCP diagnosis + `P-*.json` shape |
 | `/pomhealer-review` | Human approve / skip / apply (one decision → CLI `--yes`) |
 

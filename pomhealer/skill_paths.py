@@ -13,6 +13,7 @@ BUNDLED_SKILLS = (
     "pomhealer-propose",
     "pomhealer-review",
     "playwright-locator-repair",
+    "run-test",
 )
 
 # Workspace-only skills (not bundled); still loadable when present under skills_dir.
